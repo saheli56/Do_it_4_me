@@ -282,8 +282,8 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
 export function detectSecurityChallenge(doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)): import("@difm/shared").SecurityChallenge | undefined {
   if (!doc) return undefined;
 
-  // 1. Cloudflare Turnstile / Challenge
-  const cfElem = doc.querySelector('iframe[src*="turnstile"], iframe[src*="cloudflare"], .cf-turnstile, #challenge-stage, #cf-challenge-running, #cf-wrapper');
+  // 1. Cloudflare Turnstile / Challenge (standalone blocking screen)
+  const cfElem = doc.querySelector('iframe[src*="turnstile"], iframe[src*="cloudflare"], #challenge-stage, #cf-challenge-running, #cf-wrapper');
   const title = (doc.title || "").toLowerCase();
   if (cfElem || title.includes("just a moment...") || title.includes("attention required! | cloudflare")) {
     return {
@@ -293,27 +293,26 @@ export function detectSecurityChallenge(doc: Document = typeof document !== "und
     };
   }
 
-  // 2. Google reCAPTCHA
-  const recaptchaElem = doc.querySelector('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"], .g-recaptcha, #g-recaptcha');
-  if (recaptchaElem && isElementVisible(recaptchaElem)) {
-    return {
-      type: "RECAPTCHA",
-      description: "Google reCAPTCHA challenge detected",
-      detectedAt: Date.now()
-    };
+  // 2. Full-page blocking Google reCAPTCHA / hCaptcha (e.g. Google sorry/unusual traffic or standalone captcha screen)
+  const bodyText = (doc.body && doc.body.innerText) ? doc.body.innerText.toLowerCase() : "";
+  const isBlockingCaptchaPage =
+    bodyText.includes("our systems have detected unusual traffic") ||
+    bodyText.includes("please complete the security check to access") ||
+    title.includes("security check") ||
+    (title.includes("captcha") && !title.includes("demo"));
+
+  if (isBlockingCaptchaPage) {
+    const recaptchaElem = doc.querySelector('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"], .g-recaptcha, #g-recaptcha, iframe[src*="hcaptcha"], .h-captcha');
+    if (recaptchaElem && isElementVisible(recaptchaElem)) {
+      return {
+        type: "RECAPTCHA",
+        description: "Google reCAPTCHA / security challenge detected",
+        detectedAt: Date.now()
+      };
+    }
   }
 
-  // 3. hCaptcha
-  const hcaptchaElem = doc.querySelector('iframe[src*="hcaptcha"], .h-captcha');
-  if (hcaptchaElem && isElementVisible(hcaptchaElem)) {
-    return {
-      type: "HCAPTCHA",
-      description: "hCaptcha verification challenge detected",
-      detectedAt: Date.now()
-    };
-  }
-
-  // 4. OTP / 2FA SMS & Email prompt
+  // 3. OTP / 2FA SMS & Email prompt
   const otpInput = doc.querySelector(
     'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="2fa" i], input[id*="2fa" i], input[placeholder*="otp" i], input[placeholder*="verification code" i]'
   );

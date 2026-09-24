@@ -51,20 +51,45 @@ export function App() {
   } | null>(null);
 
   // Pending Tasks & Notes State
-  const [pendingTasks, setPendingTasks] = useState<PendingTaskItem[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PendingTaskItem[]>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_pending_tasks");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [remindersDue, setRemindersDue] = useState<PendingTaskItem[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskNotes, setNewTaskNotes] = useState("");
   const [showBillerDetails, setShowBillerDetails] = useState(false);
   const [billerProvider, setBillerProvider] = useState("");
-  const [billerType, setBillerType] = useState<"ELECTRICITY" | "WATER" | "GAS" | "INTERNET" | "MOBILE" | "CREDIT_CARD" | "OTHER">("ELECTRICITY");
+  const [billerType, setBillerType] = useState<"GENERAL" | "FORM_FILL" | "ELECTRICITY" | "WATER" | "GAS" | "INTERNET" | "MOBILE" | "CREDIT_CARD" | "OTHER">("GENERAL");
   const [billerConsumerNo, setBillerConsumerNo] = useState("");
   const [billerSubdivision, setBillerSubdivision] = useState("");
   const [billerPortalUrl, setBillerPortalUrl] = useState("");
-  const [billerCustomerName, setBillerCustomerName] = useState("");
-  const [billerPhone, setBillerPhone] = useState("");
-  const [billerEmail, setBillerEmail] = useState("");
+  const [billerCustomerName, setBillerCustomerName] = useState(() => {
+    try {
+      return localStorage.getItem("difm_user_name") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [billerPhone, setBillerPhone] = useState(() => {
+    try {
+      return localStorage.getItem("difm_user_phone") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [billerEmail, setBillerEmail] = useState(() => {
+    try {
+      return localStorage.getItem("difm_user_email") || "";
+    } catch {
+      return "";
+    }
+  });
   const [billerInstructions, setBillerInstructions] = useState("");
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [currentNoteText, setCurrentNoteText] = useState("");
@@ -78,10 +103,13 @@ export function App() {
     try {
       const res = await fetch("http://127.0.0.1:3001/pending-tasks");
       const data = (await res.json()) as { tasks: PendingTaskItem[]; remindersDue: PendingTaskItem[] };
-      setPendingTasks(data.tasks);
-      setRemindersDue(data.remindersDue);
+      if (Array.isArray(data.tasks)) {
+        setPendingTasks(data.tasks);
+        setRemindersDue(data.remindersDue || []);
+        localStorage.setItem("difm_saved_pending_tasks", JSON.stringify(data.tasks));
+      }
     } catch {
-      // Handled silently
+      // Keep local cached tasks if server temporarily unreachable
     }
   };
 
@@ -281,10 +309,21 @@ export function App() {
       }
       executionTabIdRef.current = tabId;
 
+      // Enrich goal with saved user profile if available and not already specified
+      const profileParts: string[] = [];
+      if (billerCustomerName) profileParts.push(`User Name: ${billerCustomerName}`);
+      if (billerPhone) profileParts.push(`Phone No: ${billerPhone}`);
+      if (billerEmail) profileParts.push(`Email: ${billerEmail}`);
+
+      let fullGoalPrompt = goalToRun;
+      if (profileParts.length > 0 && !goalToRun.includes("User Name:") && !goalToRun.includes("User Details:")) {
+        fullGoalPrompt = `${goalToRun} (User Profile for autofill: ${profileParts.join(", ")})`;
+      }
+
       const res = await fetch("http://127.0.0.1:3001/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: goalToRun })
+        body: JSON.stringify({ goal: fullGoalPrompt })
       });
 
       const data = (await res.json()) as { taskId: string; state: TaskState };
@@ -413,6 +452,10 @@ export function App() {
         })
       });
 
+      if (billerCustomerName) localStorage.setItem("difm_user_name", billerCustomerName);
+      if (billerPhone) localStorage.setItem("difm_user_phone", billerPhone);
+      if (billerEmail) localStorage.setItem("difm_user_email", billerEmail);
+
       setNewTaskTitle("");
       setNewTaskDueDate("");
       setNewTaskNotes("");
@@ -420,9 +463,6 @@ export function App() {
       setBillerConsumerNo("");
       setBillerSubdivision("");
       setBillerPortalUrl("");
-      setBillerCustomerName("");
-      setBillerPhone("");
-      setBillerEmail("");
       setBillerInstructions("");
       setShowBillerDetails(false);
       fetchPendingTasks();
@@ -437,19 +477,26 @@ export function App() {
 
     if (task.billerInfo) {
       const parts: string[] = [];
-      if (task.billerInfo.providerName) parts.push(`Provider: ${task.billerInfo.providerName}`);
-      if (task.billerInfo.billType) parts.push(`Type: ${task.billerInfo.billType}`);
-      if (task.billerInfo.consumerNumber) parts.push(`Consumer/Account No: ${task.billerInfo.consumerNumber}`);
+      const name = task.billerInfo.customerName || billerCustomerName;
+      const phone = task.billerInfo.phoneNumber || billerPhone;
+      const email = task.billerInfo.emailAddress || billerEmail;
+
+      if (name) parts.push(`User Name: ${name}`);
+      if (phone) parts.push(`Phone No: ${phone}`);
+      if (email) parts.push(`Email: ${email}`);
+      if (task.billerInfo.providerName) parts.push(`Site/Provider: ${task.billerInfo.providerName}`);
+      if (task.billerInfo.consumerNumber) parts.push(`Account/Consumer ID: ${task.billerInfo.consumerNumber}`);
       if (task.billerInfo.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
-      if (task.billerInfo.customerName) parts.push(`Customer Name: ${task.billerInfo.customerName}`);
-      if (task.billerInfo.phoneNumber) parts.push(`Phone No: ${task.billerInfo.phoneNumber}`);
-      if (task.billerInfo.emailAddress) parts.push(`Email: ${task.billerInfo.emailAddress}`);
       if (task.billerInfo.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
       if (task.notes) parts.push(`Notes: ${task.notes}`);
 
-      formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()} bill for ${
-        task.billerInfo.providerName || task.title
-      }. Details: ${parts.join(" | ")}. Stop and request user confirmation before final payment/card submission.`;
+      if (task.billerInfo.billType === "GENERAL" || task.billerInfo.billType === "FORM_FILL" || task.billerInfo.billType === "OTHER") {
+        formulatedGoal = `Perform form task: "${task.title}". Fill in form fields with User Details: [${parts.join(", ")}]. Clear and override any demo or sample values with these user values.`;
+      } else {
+        formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()} bill for ${
+          task.billerInfo.providerName || task.title
+        }. Details: ${parts.join(" | ")}. Stop and request user confirmation before final payment/card submission.`;
+      }
     }
 
     setGoal(formulatedGoal);
@@ -701,151 +748,153 @@ export function App() {
       )}
 
       {activeTab === "PENDING" && (
-        <div class="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-4">
-          <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2">
+        <div class="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-3.5 pr-0.5">
+          <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2.5">
             <div class="flex items-center gap-2 text-xs font-bold text-indigo-300 uppercase tracking-wider">
               <PlusIcon size={14} class="shrink-0" />
               <span>Add Pending Task</span>
             </div>
             <input
               type="text"
-              placeholder="Task name (e.g. Pay Electricity Bill, Internet Subscription)"
+              placeholder="Task name (e.g. Pay Electricity Bill, Fill Recaptcha Demo Form)"
               value={newTaskTitle}
               onInput={(e) => setNewTaskTitle((e.target as HTMLInputElement).value)}
-              class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
             />
             <div class="flex gap-2 items-center">
               <input
                 type="date"
                 value={newTaskDueDate}
                 onInput={(e) => setNewTaskDueDate((e.target as HTMLInputElement).value)}
-                class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="button"
                 onClick={() => setShowBillerDetails(!showBillerDetails)}
-                class={`text-xs px-2.5 py-1 rounded border inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap transition ${
+                class={`h-8 text-xs px-2.5 rounded border inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap transition ${
                   showBillerDetails
                     ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
                     : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
                 }`}
               >
-                <CreditCardIcon size={13} class="shrink-0" />
-                <span>{showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}</span>
+                <UserIcon size={13} class="shrink-0" />
+                <span>{showBillerDetails ? "Hide Action Details" : "+ Action Details & User Info"}</span>
               </button>
             </div>
 
             {showBillerDetails && (
-              <div class="bg-slate-900/90 border border-indigo-900/60 rounded p-2.5 space-y-2 text-xs">
+              <div class="bg-slate-900/95 border border-indigo-900/60 rounded p-2.5 space-y-2.5 text-xs">
                 <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-2">
-                  <BuildingsIcon size={14} class="shrink-0" />
-                  <span>Bill Payment Portal & Account Details</span>
+                  <UserIcon size={14} class="shrink-0" />
+                  <span>User Profile, Form Details & Instructions</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Bill Type</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Action Category</label>
                     <select
                       value={billerType}
                       onChange={(e) => setBillerType((e.target as HTMLSelectElement).value as any)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     >
-                      <option value="ELECTRICITY">Electricity</option>
-                      <option value="WATER">Water</option>
-                      <option value="GAS">Gas</option>
-                      <option value="INTERNET">Internet</option>
-                      <option value="MOBILE">Mobile</option>
+                      <option value="GENERAL">General Web Action</option>
+                      <option value="FORM_FILL">Form Autofill / Contact</option>
+                      <option value="ELECTRICITY">Electricity Bill</option>
+                      <option value="WATER">Water Bill</option>
+                      <option value="GAS">Gas Bill</option>
+                      <option value="INTERNET">Internet / Broadband</option>
+                      <option value="MOBILE">Mobile / Recharge</option>
                       <option value="CREDIT_CARD">Credit Card</option>
                       <option value="OTHER">Other</option>
                     </select>
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Provider / Biller</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Site / Service Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. Tata Power, CESC, Airtel"
+                      placeholder="e.g. Google Demo, CESC"
                       value={billerProvider}
                       onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="text-[10px] text-slate-400 block mb-0.5">Payment Portal / Website URL</label>
+                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Target Webpage / Form URL</label>
                   <input
                     type="url"
-                    placeholder="https://tatapower.com/quickpay or billing portal"
+                    placeholder="https://www.google.com/recaptcha/api2/demo or portal URL"
                     value={billerPortalUrl}
                     onInput={(e) => setBillerPortalUrl((e.target as HTMLInputElement).value)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Consumer / Account No.</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Account / ID No.</label>
                     <input
                       type="text"
                       placeholder="e.g. 102938492"
                       value={billerConsumerNo}
                       onInput={(e) => setBillerConsumerNo((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Subdivision / Circle</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Subdivision / Area</label>
                     <input
                       type="text"
                       placeholder="e.g. North Zone"
                       value={billerSubdivision}
                       onInput={(e) => setBillerSubdivision((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Account / Customer Name</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Customer Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. John Doe / Account Name"
+                      placeholder="e.g. John Doe"
                       value={billerCustomerName}
                       onInput={(e) => setBillerCustomerName((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Phone Number</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Phone Number</label>
                     <input
                       type="tel"
                       placeholder="e.g. +91 9876543210"
                       value={billerPhone}
                       onInput={(e) => setBillerPhone((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Email Address</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Email Address</label>
                     <input
                       type="email"
                       placeholder="e.g. user@example.com"
                       value={billerEmail}
                       onInput={(e) => setBillerEmail((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-0.5">Payment Instructions</label>
+                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Action Instructions</label>
                     <input
                       type="text"
-                      placeholder="e.g. Stop before OTP or CVV entry"
+                      placeholder="e.g. Fill form and submit"
                       value={billerInstructions}
                       onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
@@ -857,13 +906,13 @@ export function App() {
               value={newTaskNotes}
               onInput={(e) => setNewTaskNotes((e.target as HTMLTextAreaElement).value)}
               rows={2}
-              class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 resize-none"
+              class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 resize-none"
             />
 
             <button
               onClick={handleCreatePendingTask}
               disabled={!newTaskTitle.trim()}
-              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition inline-flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold h-8 rounded transition inline-flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
             >
               <PlusIcon size={14} class="shrink-0" />
               <span>Save Pending Task</span>

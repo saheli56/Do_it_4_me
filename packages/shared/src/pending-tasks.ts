@@ -13,7 +13,7 @@ export type PendingTaskStatus = z.infer<typeof PendingTaskStatusSchema>;
 
 export const BillerInfoSchema = z.object({
   providerName: z.string().optional(),
-  billType: z.enum(["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "OTHER"]).default("OTHER"),
+  billType: z.enum(["GENERAL", "FORM_FILL", "ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "OTHER"]).default("GENERAL"),
   consumerNumber: z.string().optional(),
   subdivision: z.string().optional(),
   portalUrl: z.string().optional(),

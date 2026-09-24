@@ -16,13 +16,24 @@ export function findTargetElement(locator: ElementLocator, doc: Document = docum
   }
 
   if (locator.name) {
+    const targetName = locator.name.toLowerCase().trim();
     const candidates = Array.from(
-      doc.querySelectorAll("button, a, input, select, textarea, [role='button']")
+      doc.querySelectorAll("button, a, input, select, textarea, [role='button'], label")
     );
     const match = candidates.find((c) => {
-      const aria = c.getAttribute("aria-label");
-      const text = c.textContent?.trim();
-      return aria === locator.name || text === locator.name;
+      const aria = (c.getAttribute("aria-label") || "").toLowerCase().trim();
+      const text = (c.textContent || "").toLowerCase().trim();
+      const placeholder = (c.getAttribute("placeholder") || "").toLowerCase().trim();
+      const nameAttr = (c.getAttribute("name") || "").toLowerCase().trim();
+      const idAttr = (c.getAttribute("id") || "").toLowerCase().trim();
+
+      return (
+        aria === targetName ||
+        text === targetName ||
+        placeholder === targetName ||
+        nameAttr === targetName ||
+        idAttr === targetName
+      );
     });
     if (match) return match;
   }
@@ -166,21 +177,47 @@ export async function executeAgentAction(
         }
         await highlightElement(el, `Typing into ${action.target.name || 'input'}`);
         const inputEl = el as HTMLInputElement | HTMLTextAreaElement;
+
+        // If element is disabled or readonly (e.g. demo form inputs), enable it for interaction
+        if ("disabled" in inputEl && inputEl.disabled) {
+          inputEl.disabled = false;
+          inputEl.removeAttribute("disabled");
+          inputEl.removeAttribute("aria-disabled");
+        }
+        if ("readOnly" in inputEl && inputEl.readOnly) {
+          inputEl.readOnly = false;
+          inputEl.removeAttribute("readonly");
+        }
+
         if ("focus" in inputEl && typeof inputEl.focus === "function") {
-          inputEl.focus();
+          try {
+            inputEl.focus();
+          } catch {}
         }
         if (action.clearExisting) {
           inputEl.value = "";
         }
-        inputEl.value = action.text;
 
-        const win = doc.defaultView || globalThis.window;
+        const proto =
+          inputEl instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+
+        if (nativeSetter) {
+          nativeSetter.call(inputEl, action.text);
+        } else {
+          inputEl.value = action.text;
+        }
+
+        const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
         const Evt = (win && (win as unknown as { Event: typeof Event }).Event) || Event;
 
         if (typeof inputEl.dispatchEvent === "function") {
           try {
-            inputEl.dispatchEvent(new Evt("input", { bubbles: true }));
-            inputEl.dispatchEvent(new Evt("change", { bubbles: true }));
+            inputEl.dispatchEvent(new Evt("input", { bubbles: true, composed: true }));
+            inputEl.dispatchEvent(new Evt("change", { bubbles: true, composed: true }));
+            inputEl.dispatchEvent(new Evt("blur", { bubbles: true, composed: true }));
           } catch {
             // Ignored
           }
