@@ -1,0 +1,22 @@
+{
+  "name": "@difm/test-env",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/mock-server.ts",
+    "test:e2e": "vitest run"
+  },
+  "dependencies": {
+    "@difm/a11y-tree": "workspace:*",
+    "@difm/server": "workspace:*",
+    "@difm/shared": "workspace:*",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "happy-dom": "^17.1.6",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7",
+    "ws": "^8.18.1"
+  }
+}

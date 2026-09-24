@@ -1,0 +1,22 @@
+{
+  "name": "@difm/a11y-tree",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@difm/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "happy-dom": "^17.1.6",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

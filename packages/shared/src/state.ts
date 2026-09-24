@@ -1,0 +1,38 @@
+import { z } from "zod";
+
+export const TaskStateSchema = z.enum([
+  "CREATED",
+  "UNDERSTANDING",
+  "PLANNING",
+  "EXECUTING",
+  "VERIFYING",
+  "WAITING_FOR_APPROVAL",
+  "WAITING_FOR_INPUT",
+  "HUMAN_TAKEOVER",
+  "RECOVERING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED"
+]);
+
+export type TaskState = z.infer<typeof TaskStateSchema>;
+
+export const VALID_STATE_TRANSITIONS: Record<TaskState, readonly TaskState[]> = {
+  CREATED: ["UNDERSTANDING", "CANCELLED", "FAILED"],
+  UNDERSTANDING: ["PLANNING", "WAITING_FOR_INPUT", "CANCELLED", "FAILED"],
+  PLANNING: ["EXECUTING", "WAITING_FOR_APPROVAL", "WAITING_FOR_INPUT", "COMPLETED", "CANCELLED", "FAILED"],
+  EXECUTING: ["PLANNING", "VERIFYING", "WAITING_FOR_APPROVAL", "WAITING_FOR_INPUT", "HUMAN_TAKEOVER", "RECOVERING", "FAILED", "CANCELLED"],
+  VERIFYING: ["PLANNING", "EXECUTING", "COMPLETED", "RECOVERING", "FAILED", "CANCELLED"],
+  WAITING_FOR_APPROVAL: ["EXECUTING", "CANCELLED", "FAILED"],
+  WAITING_FOR_INPUT: ["PLANNING", "EXECUTING", "CANCELLED", "FAILED"],
+  HUMAN_TAKEOVER: ["VERIFYING", "PLANNING", "CANCELLED", "FAILED"],
+  RECOVERING: ["PLANNING", "EXECUTING", "HUMAN_TAKEOVER", "FAILED", "CANCELLED"],
+  COMPLETED: [],
+  FAILED: [],
+  CANCELLED: []
+} as const;
+
+export function isValidStateTransition(from: TaskState, to: TaskState): boolean {
+  const allowed = VALID_STATE_TRANSITIONS[from];
+  return allowed ? allowed.includes(to) : false;
+}
