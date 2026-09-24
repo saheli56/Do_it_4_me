@@ -9,7 +9,7 @@ export default defineConfig({
     name: "Do It For Me",
     description: "Personal action agent for automating web tasks with verified supervision",
     version: "0.1.0",
-    permissions: ["activeTab", "tabs", "sidePanel", "scripting", "storage"],
+    permissions: ["activeTab", "tabs", "sidePanel", "scripting", "storage", "notifications", "alarms"],
     host_permissions: ["<all_urls>"],
     action: {
       default_title: "Open Do It For Me"

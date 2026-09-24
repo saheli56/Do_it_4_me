@@ -58,6 +58,11 @@ export function App() {
             consequences: msg.consequences
           });
           setLogs((prev) => [...prev, `[Action Required]: ${msg.summary}`]);
+          chrome.runtime.sendMessage({
+            type: "SENSITIVE_APPROVAL_REQUIRED",
+            goal: inputGoal,
+            actionType: msg.summary
+          }).catch(() => {});
         } else if (msg.type === "EXECUTE_ACTION") {
           setApprovalPrompt(null);
           setTaskState("EXECUTING");
