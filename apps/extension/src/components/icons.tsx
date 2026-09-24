@@ -389,3 +389,148 @@ export function EnvelopeSimpleIcon({ size = 16, class: className = "", ...props 
     </svg>
   );
 }
+
+export function CalendarIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z" />
+    </svg>
+  );
+}
+
+export function RepeatIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M24,128A72.08,72.08,0,0,1,96,56H204.69L190.34,41.66a8,8,0,0,1,11.32-11.32l28,28a8,8,0,0,1,0,11.32l-28,28a8,8,0,0,1-11.32-11.32L204.69,72H96a56.06,56.06,0,0,0-56,56,8,8,0,0,1-16,0Zm208,0a8,8,0,0,0-8,8,56.06,56.06,0,0,1-56,56H51.31l14.35-14.34a8,8,0,0,0-11.32-11.32l-28,28a8,8,0,0,0,0,11.32l28,28a8,8,0,0,0,11.32-11.32L51.31,208H168a72.08,72.08,0,0,0,72-72A8,8,0,0,0,232,128Z" />
+    </svg>
+  );
+}
+
+export function TagIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M243.31,136,144,36.69A15.86,15.86,0,0,0,132.69,32H40a8,8,0,0,0-8,8v92.69A15.86,15.86,0,0,0,36.69,144L136,243.31a16,16,0,0,0,22.63,0l84.68-84.68A16,16,0,0,0,243.31,136ZM147.31,232,48,132.69V48h84.69L232,147.31ZM92,84A12,12,0,1,1,80,72,12,12,0,0,1,92,84Z" />
+    </svg>
+  );
+}
+
+export function FlagIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M222.16,69.57a8,8,0,0,0-6.66-5.83l-73.4-10.48L118.89,20.43a8,8,0,0,0-13.78,0L48,128.5V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V148.64l64.11-32.06,23.21,32.83a8,8,0,0,0,13.78,0L222,76.51A8,8,0,0,0,222.16,69.57ZM142.11,135.57,118.89,102.74a8,8,0,0,0-13.78,0L48,131.29V124L96.89,26.26l19.22,27.17a8,8,0,0,0,13.78,0l67.86,9.69Z" />
+    </svg>
+  );
+}
+
+export function FunnelIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M230.6,49.53A15.81,15.81,0,0,0,216,40H40a16,16,0,0,0-11.6,27l67.6,73.74V200a15.86,15.86,0,0,0,7.06,13.19l32,21.33A16,16,0,0,0,160,221.33V140.74l67.6-73.74A15.8,15.8,0,0,0,230.6,49.53ZM144,136v80l-32-21.33V136a8,8,0,0,0-2.34-5.66L44,60.8V56H212v4.8L146.34,130.34A8,8,0,0,0,144,136Z" />
+    </svg>
+  );
+}
+
+export function MagnifyingGlassIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z" />
+    </svg>
+  );
+}
+
+export function CaretDownIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,48,88H208a8,8,0,0,1,5.66,13.66Z" />
+    </svg>
+  );
+}
+
+export function CaretUpIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M208,168H48a8,8,0,0,1-5.66-13.66l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,208,168Z" />
+    </svg>
+  );
+}
+

@@ -31,10 +31,28 @@ export async function createServer() {
     return { status: "ok", timestamp: Date.now() };
   });
 
-  app.get("/pending-tasks", async () => {
+  app.get("/pending-tasks", async (req) => {
+    const query = req.query as {
+      status?: string;
+      priority?: string;
+      category?: string;
+      search?: string;
+      sortBy?: "dueDate" | "nextRun" | "priority" | "created";
+    };
+
     return {
-      tasks: pendingTaskManager.getAllTasks(),
-      remindersDue: pendingTaskManager.getRemindersDue()
+      tasks: pendingTaskManager.getAllTasks(query),
+      remindersDue: pendingTaskManager.getRemindersDue(),
+      scheduledReady: pendingTaskManager.getScheduledTasksReadyToRun()
+    };
+  });
+
+  app.get("/pending-tasks/due-soon", async () => {
+    const reminders = pendingTaskManager.getRemindersDue();
+    const scheduled = pendingTaskManager.getScheduledTasksReadyToRun();
+    return {
+      reminders,
+      scheduled
     };
   });
 
@@ -49,16 +67,39 @@ export async function createServer() {
 
   app.patch("/pending-tasks/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { notes?: string; status?: "PENDING" | "COMPLETED" | "CANCELLED" };
+    const body = req.body as any;
     
     try {
-      if (body.notes !== undefined) {
-        pendingTaskManager.updateTaskNotes(id, body.notes);
-      }
-      if (body.status !== undefined) {
-        pendingTaskManager.updateTaskStatus(id, body.status);
-      }
-      return { task: pendingTaskManager.getTask(id) };
+      const task = pendingTaskManager.updateTask(id, body);
+      return { task };
+    } catch {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+  });
+
+  app.post("/pending-tasks/:id/record-run", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as {
+      status: "SUCCESS" | "FAILED" | "CANCELLED";
+      durationMs: number;
+      summary: string;
+      stepsCount?: number;
+      error?: string;
+    };
+
+    try {
+      const task = pendingTaskManager.recordExecution(id, body);
+      return { task };
+    } catch {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+  });
+
+  app.post("/pending-tasks/:id/clone", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const task = pendingTaskManager.cloneTask(id);
+      return { task };
     } catch {
       return reply.status(404).send({ error: "Task not found" });
     }
