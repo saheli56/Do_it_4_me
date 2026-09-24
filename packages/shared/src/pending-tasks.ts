@@ -17,6 +17,9 @@ export const BillerInfoSchema = z.object({
   consumerNumber: z.string().optional(),
   subdivision: z.string().optional(),
   portalUrl: z.string().optional(),
+  customerName: z.string().optional(),
+  phoneNumber: z.string().optional(),
+  emailAddress: z.string().optional(),
   additionalInstructions: z.string().optional()
 });
 

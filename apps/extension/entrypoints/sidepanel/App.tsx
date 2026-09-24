@@ -28,7 +28,10 @@ import {
   ListChecksIcon,
   SparkleIcon,
   TrashIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  UserIcon,
+  PhoneIcon,
+  EnvelopeSimpleIcon
 } from "../../src/components/icons";
 
 export function App() {
@@ -59,6 +62,9 @@ export function App() {
   const [billerConsumerNo, setBillerConsumerNo] = useState("");
   const [billerSubdivision, setBillerSubdivision] = useState("");
   const [billerPortalUrl, setBillerPortalUrl] = useState("");
+  const [billerCustomerName, setBillerCustomerName] = useState("");
+  const [billerPhone, setBillerPhone] = useState("");
+  const [billerEmail, setBillerEmail] = useState("");
   const [billerInstructions, setBillerInstructions] = useState("");
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [currentNoteText, setCurrentNoteText] = useState("");
@@ -388,6 +394,9 @@ export function App() {
             consumerNumber: billerConsumerNo.trim() || undefined,
             subdivision: billerSubdivision.trim() || undefined,
             portalUrl: billerPortalUrl.trim() || undefined,
+            customerName: billerCustomerName.trim() || undefined,
+            phoneNumber: billerPhone.trim() || undefined,
+            emailAddress: billerEmail.trim() || undefined,
             additionalInstructions: billerInstructions.trim() || undefined
           }
         : undefined;
@@ -411,6 +420,9 @@ export function App() {
       setBillerConsumerNo("");
       setBillerSubdivision("");
       setBillerPortalUrl("");
+      setBillerCustomerName("");
+      setBillerPhone("");
+      setBillerEmail("");
       setBillerInstructions("");
       setShowBillerDetails(false);
       fetchPendingTasks();
@@ -429,6 +441,9 @@ export function App() {
       if (task.billerInfo.billType) parts.push(`Type: ${task.billerInfo.billType}`);
       if (task.billerInfo.consumerNumber) parts.push(`Consumer/Account No: ${task.billerInfo.consumerNumber}`);
       if (task.billerInfo.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
+      if (task.billerInfo.customerName) parts.push(`Customer Name: ${task.billerInfo.customerName}`);
+      if (task.billerInfo.phoneNumber) parts.push(`Phone No: ${task.billerInfo.phoneNumber}`);
+      if (task.billerInfo.emailAddress) parts.push(`Email: ${task.billerInfo.emailAddress}`);
       if (task.billerInfo.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
       if (task.notes) parts.push(`Notes: ${task.notes}`);
 
@@ -789,15 +804,50 @@ export function App() {
                   </div>
                 </div>
 
-                <div>
-                  <label class="text-[10px] text-slate-400 block mb-0.5">Payment Instructions</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Stop before OTP or CVV entry"
-                    value={billerInstructions}
-                    onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Account / Customer Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. John Doe / Account Name"
+                      value={billerCustomerName}
+                      onInput={(e) => setBillerCustomerName((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Phone Number</label>
+                    <input
+                      type="tel"
+                      placeholder="e.g. +91 9876543210"
+                      value={billerPhone}
+                      onInput={(e) => setBillerPhone((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. user@example.com"
+                      value={billerEmail}
+                      onInput={(e) => setBillerEmail((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Payment Instructions</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Stop before OTP or CVV entry"
+                      value={billerInstructions}
+                      onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -885,7 +935,7 @@ export function App() {
                   )}
 
                   {t.billerInfo && (
-                    <div class="bg-indigo-950/40 border border-indigo-900/50 rounded p-2 mb-1.5 text-[11px] space-y-1">
+                    <div class="bg-indigo-950/40 border border-indigo-900/50 rounded p-2 mb-1.5 text-[11px] space-y-1.5">
                       <div class="flex items-center justify-between text-indigo-300 font-medium">
                         <span class="inline-flex items-center gap-1">
                           <BuildingsIcon size={12} />
@@ -906,6 +956,28 @@ export function App() {
                       {t.billerInfo.subdivision && (
                         <div class="text-[10px] text-slate-400">
                           Circle/Subdivision: {t.billerInfo.subdivision}
+                        </div>
+                      )}
+                      {(t.billerInfo.customerName || t.billerInfo.phoneNumber || t.billerInfo.emailAddress) && (
+                        <div class="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-slate-300 pt-1 border-t border-indigo-900/40">
+                          {t.billerInfo.customerName && (
+                            <span class="inline-flex items-center gap-1 text-slate-200">
+                              <UserIcon size={11} class="text-indigo-400" />
+                              {t.billerInfo.customerName}
+                            </span>
+                          )}
+                          {t.billerInfo.phoneNumber && (
+                            <span class="inline-flex items-center gap-1 text-slate-300">
+                              <PhoneIcon size={11} class="text-indigo-400" />
+                              {t.billerInfo.phoneNumber}
+                            </span>
+                          )}
+                          {t.billerInfo.emailAddress && (
+                            <span class="inline-flex items-center gap-1 text-slate-300 truncate max-w-[140px]">
+                              <EnvelopeSimpleIcon size={11} class="text-indigo-400" />
+                              {t.billerInfo.emailAddress}
+                            </span>
+                          )}
                         </div>
                       )}
                       {t.billerInfo.additionalInstructions && (

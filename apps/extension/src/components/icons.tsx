@@ -342,3 +342,50 @@ export function ShieldCheckIcon({ size = 16, class: className = "", ...props }: 
   );
 }
 
+export function UserIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z" />
+    </svg>
+  );
+}
+
+export function PhoneIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M222.37,158.46l-47.11-21.11a16,16,0,0,0-15.71,2.53L136,158.82A111.44,111.44,0,0,1,97.18,120l18.94-23.55a16,16,0,0,0,2.53-15.71L97.54,33.63A16,16,0,0,0,82.08,24H40A16,16,0,0,0,24,40,192.21,192.21,0,0,0,216,232a16,16,0,0,0,16-16V173.92A16,16,0,0,0,222.37,158.46ZM216,216A176.2,176.2,0,0,1,40,40H82.08l21.11,47.11-21.68,27a8,8,0,0,0-.87,8.93,127.42,127.42,0,0,0,77.41,77.41,8,8,0,0,0,8.93-.87l27-21.68L216,173.92Z" />
+    </svg>
+  );
+}
+
+export function EnvelopeSimpleIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM208,64,128,124,48,64ZM216,192H40V74.19l83.2,62.4a8,8,0,0,0,9.6,0L216,74.19V192Z" />
+    </svg>
+  );
+}
