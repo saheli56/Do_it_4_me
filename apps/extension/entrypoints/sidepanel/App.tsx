@@ -140,13 +140,21 @@ export function App() {
           if (!activeTabId) return;
 
           chrome.tabs.sendMessage(activeTabId, { type: "EXECUTE_ACTION", action: msg.action }, () => {
-            if (chrome.runtime.lastError) {
-              // Silently ignore
-            }
-            setTimeout(() => {
-              chrome.tabs.sendMessage(activeTabId!, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
-                if (chrome.runtime.lastError || !obsRes) return;
-                if (obsRes?.observation && socketRef.current && msg.taskId) {
+            const captureWithRetry = (tabId: number, retryCount = 0) => {
+              chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
+                if (chrome.runtime.lastError || !obsRes?.observation) {
+                  if (retryCount < 6) {
+                    chrome.scripting.executeScript(
+                      { target: { tabId }, files: ["content-scripts/content.js"] },
+                      () => {
+                        setTimeout(() => captureWithRetry(tabId, retryCount + 1), 600);
+                      }
+                    );
+                  }
+                  return;
+                }
+
+                if (socketRef.current && msg.taskId) {
                   const nextObsMsg: ExtensionMessage = {
                     type: "OBSERVATION_CAPTURED",
                     taskId: msg.taskId,
@@ -155,6 +163,10 @@ export function App() {
                   socketRef.current.send(JSON.stringify(nextObsMsg));
                 }
               });
+            };
+
+            setTimeout(() => {
+              captureWithRetry(activeTabId!);
             }, 600);
           });
         } else if (msg.type === "TASK_STATE_CHANGED") {
