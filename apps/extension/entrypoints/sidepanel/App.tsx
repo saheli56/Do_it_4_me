@@ -77,9 +77,10 @@ export function App() {
     return newTab.id;
   };
 
-  useEffect(() => {
-    fetchPendingTasks();
-    const interval = setInterval(fetchPendingTasks, 15000);
+  const setupSocket = () => {
+    if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+      return socketRef.current;
+    }
 
     const ws = new WebSocket("ws://127.0.0.1:3001/ws");
     socketRef.current = ws;
@@ -154,13 +155,13 @@ export function App() {
                   return;
                 }
 
-                if (socketRef.current && msg.taskId) {
+                if (msg.taskId) {
                   const nextObsMsg: ExtensionMessage = {
                     type: "OBSERVATION_CAPTURED",
                     taskId: msg.taskId,
                     observation: obsRes.observation
                   };
-                  socketRef.current.send(JSON.stringify(nextObsMsg));
+                  sendExtensionMessage(nextObsMsg);
                 }
               });
             };
@@ -177,6 +178,40 @@ export function App() {
         // Handled silently
       }
     };
+
+    ws.onclose = () => {
+      // Reconnect after brief pause if sidepanel is open
+      setTimeout(() => {
+        setupSocket();
+      }, 2000);
+    };
+
+    return ws;
+  };
+
+  const sendExtensionMessage = (msg: ExtensionMessage) => {
+    try {
+      const ws = setupSocket();
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      } else {
+        ws.addEventListener(
+          "open",
+          () => {
+            ws.send(JSON.stringify(msg));
+          },
+          { once: true }
+        );
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingTasks();
+    const interval = setInterval(fetchPendingTasks, 15000);
+    const ws = setupSocket();
 
     return () => {
       clearInterval(interval);
@@ -220,18 +255,16 @@ export function App() {
       setTaskId(data.taskId);
 
       const sendObservation = (obs: PageObservation) => {
-        if (socketRef.current) {
-          const observationMsg: ExtensionMessage = {
-            type: "OBSERVATION_CAPTURED",
-            taskId: data.taskId,
-            observation: obs
-          };
-          socketRef.current.send(JSON.stringify(observationMsg));
-          setLogs((prev) => [
-            ...prev,
-            `Page observed (${obs.interactiveNodes.length} interactive elements). Planning next action...`
-          ]);
-        }
+        const observationMsg: ExtensionMessage = {
+          type: "OBSERVATION_CAPTURED",
+          taskId: data.taskId,
+          observation: obs
+        };
+        sendExtensionMessage(observationMsg);
+        setLogs((prev) => [
+          ...prev,
+          `Page observed (${obs.interactiveNodes.length} interactive elements). Planning next action...`
+        ]);
       };
 
       chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
@@ -267,14 +300,14 @@ export function App() {
   };
 
   const handleDecision = (approved: boolean) => {
-    if (!taskId || !socketRef.current) return;
+    if (!taskId) return;
 
     const approvalMsg: ExtensionMessage = {
       type: "USER_APPROVAL_RESPONSE",
       taskId,
       approved
     };
-    socketRef.current.send(JSON.stringify(approvalMsg));
+    sendExtensionMessage(approvalMsg);
     setApprovalPrompt(null);
     setLogs((prev) => [...prev, approved ? "Action approved." : "Action rejected."]);
   };
