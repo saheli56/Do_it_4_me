@@ -17,6 +17,10 @@ export function App() {
     summary: string;
     consequences: string;
   } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<{
+    title: string;
+    summary: string;
+  } | null>(null);
 
   // Pending Tasks & Notes State
   const [pendingTasks, setPendingTasks] = useState<PendingTaskItem[]>([]);
@@ -35,6 +39,9 @@ export function App() {
   const [currentNoteText, setCurrentNoteText] = useState("");
 
   const socketRef = useRef<WebSocket | null>(null);
+  const executionTabIdRef = useRef<number | null>(null);
+  const currentGoalRef = useRef<string>("");
+  const executingPendingTaskIdRef = useRef<string | null>(null);
 
   const fetchPendingTasks = async () => {
     try {
@@ -45,6 +52,29 @@ export function App() {
     } catch {
       // Handled silently
     }
+  };
+
+  const openAndPrepareTab = async (targetUrl?: string): Promise<number> => {
+    const urlToOpen = targetUrl && targetUrl.startsWith("http") ? targetUrl : "https://www.google.com";
+    const newTab = await chrome.tabs.create({ url: urlToOpen, active: true });
+    if (!newTab.id) throw new Error("Unable to create browser tab");
+
+    await new Promise<void>((resolve) => {
+      const onUpdated = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (tabId === newTab.id && changeInfo.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }, 8000);
+    });
+
+    await new Promise((r) => setTimeout(r, 600));
+    return newTab.id;
   };
 
   useEffect(() => {
@@ -67,7 +97,7 @@ export function App() {
           setLogs((prev) => [...prev, `[Action Required]: ${msg.summary}`]);
           chrome.runtime.sendMessage({
             type: "SENSITIVE_APPROVAL_REQUIRED",
-            goal: inputGoal,
+            goal: currentGoalRef.current,
             actionType: msg.summary
           }).catch(() => {});
         } else if (msg.type === "EXECUTE_ACTION") {
@@ -77,7 +107,22 @@ export function App() {
 
           if (msg.action.type === "COMPLETE") {
             setTaskState("COMPLETED");
-            setLogs((prev) => [...prev, `Task Completed: ${msg.action.summary}`]);
+            const summary = msg.action.summary || "Task finished and verified successfully!";
+            setLogs((prev) => [...prev, `🎉 Task Completed: ${summary}`]);
+            setSuccessMessage({
+              title: "Task Executed Successfully! 🎉",
+              summary
+            });
+
+            if (executingPendingTaskIdRef.current) {
+              try {
+                await fetch(`http://127.0.0.1:3001/pending-tasks/${executingPendingTaskIdRef.current}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ status: "COMPLETED" })
+                });
+              } catch {}
+            }
             fetchPendingTasks();
             return;
           }
@@ -87,8 +132,11 @@ export function App() {
             return;
           }
 
-          const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-          const activeTabId = tab?.id;
+          let activeTabId = executionTabIdRef.current;
+          if (!activeTabId) {
+            const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+            activeTabId = tab?.id || null;
+          }
           if (!activeTabId) return;
 
           chrome.tabs.sendMessage(activeTabId, { type: "EXECUTE_ACTION", action: msg.action }, () => {
@@ -96,7 +144,7 @@ export function App() {
               // Silently ignore
             }
             setTimeout(() => {
-              chrome.tabs.sendMessage(activeTabId, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
+              chrome.tabs.sendMessage(activeTabId!, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
                 if (chrome.runtime.lastError || !obsRes) return;
                 if (obsRes?.observation && socketRef.current && msg.taskId) {
                   const nextObsMsg: ExtensionMessage = {
@@ -124,20 +172,31 @@ export function App() {
     };
   }, []);
 
-  const handleStartTask = async (customGoal?: string) => {
+  const handleStartTask = async (customGoal?: string, targetUrl?: string, pendingTaskId?: string) => {
     const goalToRun = (customGoal || goal).trim();
     if (!goalToRun) return;
 
     try {
-      setLogs([`Creating task for goal: "${goalToRun}"...`]);
+      setSuccessMessage(null);
+      setLogs([`Opening new tab for task: "${goalToRun}"...`]);
       setTaskState("UNDERSTANDING");
       setActiveTab("EXECUTE");
+      currentGoalRef.current = goalToRun;
+      executingPendingTaskIdRef.current = pendingTaskId || null;
 
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (!tab?.id) {
-        setLogs((prev) => [...prev, "Error: No active browser tab found. Please click on the webpage tab."]);
-        return;
+      let tabId: number;
+      if (targetUrl && targetUrl.startsWith("http")) {
+        setLogs((prev) => [...prev, `Navigating new tab to: ${targetUrl}`]);
+        tabId = await openAndPrepareTab(targetUrl);
+      } else {
+        const [existingTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (existingTab?.id && existingTab.url && !existingTab.url.startsWith("chrome://")) {
+          tabId = existingTab.id;
+        } else {
+          tabId = await openAndPrepareTab("https://www.google.com");
+        }
       }
+      executionTabIdRef.current = tabId;
 
       const res = await fetch("http://127.0.0.1:3001/tasks", {
         method: "POST",
@@ -163,11 +222,11 @@ export function App() {
         }
       };
 
-      chrome.tabs.sendMessage(tab.id, { type: "CAPTURE_OBSERVATION" }, (response) => {
+      chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
         if (chrome.runtime.lastError || !response?.observation) {
           chrome.scripting.executeScript(
             {
-              target: { tabId: tab.id! },
+              target: { tabId },
               files: ["content-scripts/content.js"]
             },
             () => {
@@ -176,14 +235,14 @@ export function App() {
                 return;
               }
               setTimeout(() => {
-                chrome.tabs.sendMessage(tab.id!, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
+                chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
                   if (chrome.runtime.lastError || !retryRes?.observation) {
-                    setLogs((prev) => [...prev, "Please refresh your cart webpage tab and click Start again."]);
+                    setLogs((prev) => [...prev, "Please refresh the target webpage tab and click Start again."]);
                     return;
                   }
                   sendObservation(retryRes.observation);
                 });
-              }, 200);
+              }, 300);
             }
           );
         } else {
@@ -253,6 +312,8 @@ export function App() {
 
   const handleExecutePendingTask = async (task: PendingTaskItem) => {
     let formulatedGoal = task.title;
+    const targetUrl = task.billerInfo?.portalUrl || task.targetUrl;
+
     if (task.billerInfo) {
       const parts: string[] = [];
       if (task.billerInfo.providerName) parts.push(`Provider: ${task.billerInfo.providerName}`);
@@ -267,16 +328,8 @@ export function App() {
       }. Details: ${parts.join(" | ")}. Stop and request user confirmation before final payment/card submission.`;
     }
 
-    if (task.billerInfo?.portalUrl) {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (tab?.id) {
-        chrome.tabs.update(tab.id, { url: task.billerInfo.portalUrl });
-      }
-    }
-
-    setActiveTab("EXECUTE");
     setGoal(formulatedGoal);
-    handleStartTask(formulatedGoal);
+    handleStartTask(formulatedGoal, targetUrl, task.id);
   };
 
   const handleSaveNotes = async (id: string) => {
@@ -396,6 +449,48 @@ export function App() {
               </button>
             </div>
           </div>
+
+          {successMessage && (
+            <div class="bg-emerald-950/60 border border-emerald-500/60 rounded-lg p-3.5 mb-3 shadow-lg shadow-emerald-950/40">
+              <div class="flex items-start gap-2.5">
+                <span class="text-xl">✅</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-emerald-300">{successMessage.title}</h3>
+                    <button
+                      onClick={() => setSuccessMessage(null)}
+                      class="text-slate-400 hover:text-white text-xs px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p class="text-[11px] text-emerald-100/90 mt-1 leading-relaxed">{successMessage.summary}</p>
+                  <div class="mt-2.5 flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSuccessMessage(null);
+                        setGoal("");
+                        setLogs([]);
+                        setTaskState(null);
+                      }}
+                      class="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-2.5 py-1 rounded transition"
+                    >
+                      Start Another Task
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSuccessMessage(null);
+                        setActiveTab("PENDING");
+                      }}
+                      class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition"
+                    >
+                      View Pending Tasks
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {approvalPrompt && (
             <div class="bg-amber-950/40 border border-amber-500/50 rounded-lg p-3 mb-4">
