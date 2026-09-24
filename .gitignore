@@ -6,6 +6,7 @@ node_modules/
 dist/
 .output/
 .wxt/
+*.tsbuildinfo
 
 # Environment variables & secrets
 .env

@@ -4,9 +4,11 @@ import cors from "@fastify/cors";
 import { loadConfig } from "./config.js";
 import { PlannerService } from "./planner.js";
 import { TaskOrchestrator } from "./orchestrator.js";
+import { PendingTaskManager } from "./pending-task-manager.js";
 import {
   ExtensionMessageSchema,
   TaskCreateRequestSchema,
+  CreatePendingTaskSchema,
   type ServerMessage
 } from "@difm/shared";
 
@@ -23,9 +25,49 @@ export async function createServer() {
     config.LLM_MODEL
   );
   const orchestrator = new TaskOrchestrator(planner);
+  const pendingTaskManager = new PendingTaskManager();
 
   app.get("/health", async () => {
     return { status: "ok", timestamp: Date.now() };
+  });
+
+  app.get("/pending-tasks", async () => {
+    return {
+      tasks: pendingTaskManager.getAllTasks(),
+      remindersDue: pendingTaskManager.getRemindersDue()
+    };
+  });
+
+  app.post("/pending-tasks", async (req, reply) => {
+    const parsed = CreatePendingTaskSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid pending task data", details: parsed.error.issues });
+    }
+    const task = pendingTaskManager.createTask(parsed.data);
+    return { task };
+  });
+
+  app.patch("/pending-tasks/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { notes?: string; status?: "PENDING" | "COMPLETED" | "CANCELLED" };
+    
+    try {
+      if (body.notes !== undefined) {
+        pendingTaskManager.updateTaskNotes(id, body.notes);
+      }
+      if (body.status !== undefined) {
+        pendingTaskManager.updateTaskStatus(id, body.status);
+      }
+      return { task: pendingTaskManager.getTask(id) };
+    } catch {
+      return reply.status(404).send({ error: "Task not found" });
+    }
+  });
+
+  app.delete("/pending-tasks/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const success = pendingTaskManager.deleteTask(id);
+    return { success };
   });
 
   app.post("/tasks", async (req, reply) => {
