@@ -197,6 +197,21 @@ export function isElementInteractive(element: Element, role: string): boolean {
   return false;
 }
 
+const SOCIAL_DOMAINS = [
+  "facebook.com",
+  "twitter.com",
+  "x.com",
+  "instagram.com",
+  "linkedin.com",
+  "youtube.com",
+  "pinterest.com"
+];
+
+function isOffsiteSocialLink(href?: string): boolean {
+  if (!href) return false;
+  return SOCIAL_DOMAINS.some((domain) => href.toLowerCase().includes(domain));
+}
+
 export function extractSemanticNodes(root: Element = document.body): SemanticNode[] {
   const results: SemanticNode[] = [];
   let nodeIdCounter = 1;
@@ -210,6 +225,13 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
     const isInteractive = isElementInteractive(node, role);
 
     if (isInteractive) {
+      const rawHref = node.tagName === "A" ? node.getAttribute("href") || undefined : undefined;
+
+      // Filter out offsite social media links so the agent doesn't get distracted
+      if (isOffsiteSocialLink(rawHref)) {
+        return;
+      }
+
       const name = getAccessibleName(node);
       const selector = generateStableSelector(node);
 
@@ -234,6 +256,7 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
         id: `node-${nodeIdCounter++}`,
         role,
         name,
+        href: rawHref,
         selector,
         bounds,
         isInteractive: true,
@@ -265,6 +288,7 @@ export function formatSemanticTreeForPrompt(nodes: SemanticNode[]): string {
     .map((n) => {
       let desc = `[${n.id}] ${n.role.toUpperCase()}`;
       if (n.name) desc += ` "${n.name}"`;
+      if (n.href) desc += ` (href: "${n.href}")`;
       if (n.value) desc += ` (value: "${n.value}")`;
       if (n.placeholder) desc += ` (placeholder: "${n.placeholder}")`;
       if (n.checked !== undefined) desc += ` [checked=${n.checked}]`;

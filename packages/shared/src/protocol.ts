@@ -6,6 +6,7 @@ export const SemanticNodeSchema = z.object({
   id: z.string(),
   role: z.string(),
   name: z.string(),
+  href: z.string().optional(),
   value: z.string().optional(),
   placeholder: z.string().optional(),
   checked: z.boolean().optional(),
