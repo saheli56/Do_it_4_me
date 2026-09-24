@@ -131,9 +131,9 @@ export function App() {
           if (msg.action.type === "COMPLETE") {
             setTaskState("COMPLETED");
             const summary = msg.action.summary || "Task finished and verified successfully!";
-            setLogs((prev) => [...prev, `🎉 Task Completed: ${summary}`]);
+            setLogs((prev) => [...prev, `Task Completed: ${summary}`]);
             setSuccessMessage({
-              title: "Task Executed Successfully! 🎉",
+              title: "Task Executed Successfully!",
               summary
             });
 
@@ -451,21 +451,21 @@ export function App() {
         <div class="flex gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
           <button
             onClick={() => setActiveTab("EXECUTE")}
-            class={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1 transition ${
+            class={`px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1.5 transition ${
               activeTab === "EXECUTE" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
             }`}
           >
             <LightningIcon size={14} />
-            Action
+            <span>Action</span>
           </button>
           <button
             onClick={() => setActiveTab("PENDING")}
-            class={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 transition ${
+            class={`px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1.5 transition ${
               activeTab === "PENDING" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
             }`}
           >
             <ListChecksIcon size={14} />
-            Tasks & Notes
+            <span>Tasks & Notes</span>
             {pendingTasks.filter((t) => t.status !== "COMPLETED").length > 0 && (
               <span class="bg-indigo-950 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-indigo-700">
                 {pendingTasks.filter((t) => t.status !== "COMPLETED").length}
@@ -477,7 +477,7 @@ export function App() {
 
       {remindersDue.length > 0 && (
         <div class="bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5 mb-3 flex items-start gap-2 animate-pulse">
-          <ClockIcon size={18} class="text-amber-400 mt-0.5" />
+          <ClockIcon size={18} class="text-amber-400 mt-0.5 shrink-0" />
           <div class="flex-1">
             <span class="text-xs font-semibold text-amber-300">Upcoming Due Reminders:</span>
             <div class="text-[11px] text-slate-300 space-y-0.5 mt-0.5">
@@ -486,10 +486,10 @@ export function App() {
                   <span>• {t.title}</span>
                   <button
                     onClick={() => handleExecutePendingTask(t)}
-                    class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium ml-2 inline-flex items-center gap-1"
+                    class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium ml-2 inline-flex items-center gap-1.5"
                   >
                     <PlayIcon size={11} />
-                    Execute Now
+                    <span>Execute Now</span>
                   </button>
                 </div>
               ))}
@@ -516,10 +516,10 @@ export function App() {
               <button
                 onClick={() => handleStartTask()}
                 disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED")}
-                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center gap-1"
+                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center gap-1.5"
               >
                 <PlayIcon size={14} />
-                Start
+                <span>Start</span>
               </button>
             </div>
           </div>
@@ -666,13 +666,13 @@ export function App() {
                       onChange={(e) => setBillerType((e.target as HTMLSelectElement).value as any)}
                       class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                     >
-                      <option value="ELECTRICITY">⚡ Electricity</option>
-                      <option value="WATER">💧 Water</option>
-                      <option value="GAS">🔥 Gas</option>
-                      <option value="INTERNET">🌐 Internet</option>
-                      <option value="MOBILE">📱 Mobile</option>
-                      <option value="CREDIT_CARD">💳 Credit Card</option>
-                      <option value="OTHER">📄 Other</option>
+                      <option value="ELECTRICITY">Electricity</option>
+                      <option value="WATER">Water</option>
+                      <option value="GAS">Gas</option>
+                      <option value="INTERNET">Internet</option>
+                      <option value="MOBILE">Mobile</option>
+                      <option value="CREDIT_CARD">Credit Card</option>
+                      <option value="OTHER">Other</option>
                     </select>
                   </div>
                   <div>
