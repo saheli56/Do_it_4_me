@@ -439,41 +439,47 @@ export function App() {
   };
 
   return (
-    <div class="p-4 flex flex-col h-screen max-w-md mx-auto">
-      <header class="border-b border-slate-800 pb-3 mb-3 flex items-center justify-between">
-        <div class="flex items-center gap-1.5">
-          <SparkleIcon size={20} class="text-indigo-400" />
-          <div>
-            <h1 class="text-lg font-bold text-indigo-400 leading-none">Do It For Me</h1>
-            <span class="text-[10px] text-slate-500 font-mono">Personal Action Agent</span>
+    <div class="p-3.5 flex flex-col h-screen max-w-md mx-auto">
+      <header class="border-b border-slate-800/80 pb-2.5 mb-2.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <SparkleIcon size={18} class="text-indigo-400 shrink-0" />
+          <div class="flex flex-col">
+            <h1 class="text-sm font-bold text-indigo-400 leading-tight whitespace-nowrap">Do It For Me</h1>
+            <span class="text-[10px] text-slate-500 font-mono leading-none">Personal Action Agent</span>
           </div>
         </div>
-        <div class="flex gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
-          <button
-            onClick={() => setActiveTab("EXECUTE")}
-            class={`px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1.5 transition ${
-              activeTab === "EXECUTE" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <LightningIcon size={14} />
-            <span>Action</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("PENDING")}
-            class={`px-2.5 py-1 rounded-md font-medium inline-flex items-center gap-1.5 transition ${
-              activeTab === "PENDING" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <ListChecksIcon size={14} />
-            <span>Tasks & Notes</span>
-            {pendingTasks.filter((t) => t.status !== "COMPLETED").length > 0 && (
-              <span class="bg-indigo-950 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-indigo-700">
-                {pendingTasks.filter((t) => t.status !== "COMPLETED").length}
-              </span>
-            )}
-          </button>
-        </div>
       </header>
+
+      {/* Full-width Segmented Tab Navigation */}
+      <div class="grid grid-cols-2 gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 mb-3 text-xs">
+        <button
+          onClick={() => setActiveTab("EXECUTE")}
+          class={`py-1.5 px-2 rounded-md font-medium inline-flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
+            activeTab === "EXECUTE"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <LightningIcon size={14} class="shrink-0" />
+          <span>Action</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("PENDING")}
+          class={`py-1.5 px-2 rounded-md font-medium inline-flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
+            activeTab === "PENDING"
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-slate-400 hover:text-white"
+          }`}
+        >
+          <ListChecksIcon size={14} class="shrink-0" />
+          <span>Tasks & Notes</span>
+          {pendingTasks.filter((t) => t.status !== "COMPLETED").length > 0 && (
+            <span class="bg-indigo-950 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-indigo-700 leading-none">
+              {pendingTasks.filter((t) => t.status !== "COMPLETED").length}
+            </span>
+          )}
+        </button>
+      </div>
 
       {remindersDue.length > 0 && (
         <div class="bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5 mb-3 flex items-start gap-2 animate-pulse">
@@ -501,24 +507,24 @@ export function App() {
       {activeTab === "EXECUTE" && (
         <>
           <div class="mb-4">
-            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
               Outcome Goal
             </label>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
               <input
                 type="text"
                 placeholder="e.g. Return these shoes or Pay electricity bill"
                 value={goal}
                 onInput={(e) => setGoal((e.target as HTMLInputElement).value)}
                 disabled={taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED"}
-                class="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50 text-slate-100"
               />
               <button
                 onClick={() => handleStartTask()}
                 disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED")}
-                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center gap-1.5"
+                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap shadow-sm"
               >
-                <PlayIcon size={14} />
+                <PlayIcon size={14} class="shrink-0" />
                 <span>Start</span>
               </button>
             </div>
@@ -620,8 +626,8 @@ export function App() {
       {activeTab === "PENDING" && (
         <div class="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-4">
           <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2">
-            <div class="flex items-center gap-1.5 text-xs font-bold text-indigo-300 uppercase tracking-wider">
-              <PlusIcon size={14} />
+            <div class="flex items-center gap-2 text-xs font-bold text-indigo-300 uppercase tracking-wider">
+              <PlusIcon size={14} class="shrink-0" />
               <span>Add Pending Task</span>
             </div>
             <input
@@ -636,26 +642,26 @@ export function App() {
                 type="date"
                 value={newTaskDueDate}
                 onInput={(e) => setNewTaskDueDate((e.target as HTMLInputElement).value)}
-                class="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="button"
                 onClick={() => setShowBillerDetails(!showBillerDetails)}
-                class={`text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 transition ${
+                class={`text-xs px-2.5 py-1 rounded border inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap transition ${
                   showBillerDetails
                     ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
                     : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
                 }`}
               >
-                <CreditCardIcon size={13} />
-                {showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}
+                <CreditCardIcon size={13} class="shrink-0" />
+                <span>{showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}</span>
               </button>
             </div>
 
             {showBillerDetails && (
               <div class="bg-slate-900/90 border border-indigo-900/60 rounded p-2.5 space-y-2 text-xs">
-                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
-                  <BuildingsIcon size={14} />
+                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-2">
+                  <BuildingsIcon size={14} class="shrink-0" />
                   <span>Bill Payment Portal & Account Details</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -745,16 +751,16 @@ export function App() {
             <button
               onClick={handleCreatePendingTask}
               disabled={!newTaskTitle.trim()}
-              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition inline-flex items-center justify-center gap-1"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition inline-flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
             >
-              <PlusIcon size={14} />
-              Save Pending Task
+              <PlusIcon size={14} class="shrink-0" />
+              <span>Save Pending Task</span>
             </button>
           </div>
 
           <div class="space-y-2.5">
-            <div class="flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <ListChecksIcon size={14} />
+            <div class="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <ListChecksIcon size={14} class="shrink-0" />
               <span>Pending Tasks & Notes ({pendingTasks.length})</span>
             </div>
             {pendingTasks.length === 0 ? (
