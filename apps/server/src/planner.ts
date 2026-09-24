@@ -26,10 +26,11 @@ CORE CAPABILITIES & EXECUTION RULES:
   * Consumer / Account / Connection / ID No -> input matching "consumer", "account", "ca no", "k no", "id", "number"
   * Comments / Messages / Notes -> textarea or textbox matching "message", "notes", "description", "details"
 - If form inputs already contain sample/demo values (e.g. "Jane", "Smith", "stopallbots@gmail.com") or are marked [disabled] on demo/test pages, ALWAYS OVERRIDE/REPLACE them with the user's provided details (e.g. First Name "mimi", Last Name "mimi", Email "demo56@gmail.com").
-- SUBMITTING THE FORM:
+- SUBMITTING THE FORM & COMPLETION:
   * If the USER GOAL specifies submitting (e.g. "submit the form", "submit", "click submit", "send form", "proceed", "continue") OR all form inputs are already filled with user details, and a Submit / Proceed / Send / Continue button or input (type="submit" or role="button") exists on the page:
     -> YOU MUST OUTPUT A "CLICK" ACTION ON THAT SUBMIT BUTTON (e.g. targetId of Submit button).
     -> NEVER output COMPLETE without clicking the Submit button when the user explicitly asked to submit the form!
+  * If the previous action already clicked the Submit button, or if the form is already submitted/reloaded, output COMPLETE with summary: "Form filled with user details and submitted successfully."
   * Only output COMPLETE after clicking the Submit button, or if no submission button exists and all fields are filled.
 
 3. AUTONOMOUS NAVIGATION & DEEP LINKING:
@@ -104,49 +105,65 @@ ${formattedTree}
 
 Analyze the user goal and the interactive elements, then output the next JSON action.`;
 
-    try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessage }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.1
-      });
+    const candidateModels = [this.model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"].filter(
+      (m, idx, arr) => arr.indexOf(m) === idx
+    );
 
-      const messageContent = response.choices[0]?.message?.content || "{}";
-      let rawAction: any = null;
+    let lastError: string = "";
 
+    for (const modelToTry of candidateModels) {
       try {
-        const parsed = JSON.parse(messageContent);
-        rawAction = parsed.action || parsed;
-      } catch {
-        const jsonMatch = messageContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
+        const response = await this.client.chat.completions.create({
+          model: modelToTry,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userMessage }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_tokens: 350
+        });
+
+        const messageContent = response.choices[0]?.message?.content || "{}";
+        let rawAction: any = null;
+
+        try {
+          const parsed = JSON.parse(messageContent);
           rawAction = parsed.action || parsed;
+        } catch {
+          const jsonMatch = messageContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            rawAction = parsed.action || parsed;
+          }
         }
-      }
 
-      if (!rawAction || !rawAction.type) {
-        return {
-          type: "FAIL",
-          error: "Could not determine next action from model response",
-          recoverable: false
-        };
-      }
+        if (!rawAction || !rawAction.type) {
+          return {
+            type: "FAIL",
+            error: "Could not determine next action from model response",
+            recoverable: false
+          };
+        }
 
-      return this.mapToAgentAction(rawAction, observation);
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Planner error";
-      console.error("Groq Planning error:", errorMsg);
-      return {
-        type: "FAIL",
-        error: `LLM Planner error: ${errorMsg}`,
-        recoverable: false
-      };
+        return this.mapToAgentAction(rawAction, observation);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Planner error";
+        lastError = errorMsg;
+        console.warn(`Planning attempt with model ${modelToTry} failed:`, errorMsg);
+        // If it's a rate limit / OTPM error (429), try next candidate model
+        if (errorMsg.includes("429") || errorMsg.includes("limit") || errorMsg.includes("tokens")) {
+          continue;
+        }
+        break;
+      }
     }
+
+    return {
+      type: "FAIL",
+      error: `LLM Planner error: ${lastError}`,
+      recoverable: false
+    };
   }
 
   private mapToAgentAction(

@@ -20,8 +20,19 @@ export default defineContentScript({
         sendResponse({ success: true, observation });
       } else if (message.type === "EXECUTE_ACTION") {
         const action = message.action as AgentAction;
-        executeAgentAction(action).then((res) => {
-          sendResponse(res);
+        executeAgentAction(action).then(async (res) => {
+          // Allow DOM to settle and capture fresh observation
+          await new Promise((r) => setTimeout(r, 200));
+          const nodes = extractSemanticNodes(document.body);
+          const securityChallenge = detectSecurityChallenge(document);
+          const observation: PageObservation = {
+            url: window.location.href,
+            title: document.title,
+            interactiveNodes: nodes,
+            securityChallenge,
+            timestamp: Date.now()
+          };
+          sendResponse({ ...res, observation });
         });
         return true;
       }

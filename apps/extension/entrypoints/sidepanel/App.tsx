@@ -69,6 +69,7 @@ export function App() {
   const [scheduledReady, setScheduledReady] = useState<PendingTaskItem[]>([]);
 
   // Task Creation Form State
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskNotes, setNewTaskNotes] = useState("");
@@ -134,7 +135,7 @@ export function App() {
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"created" | "dueDate" | "nextRun" | "priority">("created");
 
-  // Editing Task Modal & State
+  // Editing Task Modal State
   const [editingTask, setEditingTask] = useState<PendingTaskItem | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editPriority, setEditPriority] = useState<TaskPriority>("MEDIUM");
@@ -169,6 +170,7 @@ export function App() {
   const executingPendingTaskIdRef = useRef<string | null>(null);
   const executionStartTimeRef = useRef<number>(0);
   const executionStepsCountRef = useRef<number>(0);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchPendingTasks = async () => {
     try {
@@ -195,14 +197,57 @@ export function App() {
     }
   };
 
-  const openAndPrepareTab = async (targetUrl?: string): Promise<number> => {
-    const urlToOpen = targetUrl && targetUrl.startsWith("http") ? targetUrl : "https://www.google.com";
-    const newTab = await chrome.tabs.create({ url: urlToOpen, active: true });
-    if (!newTab.id) throw new Error("Unable to create browser tab");
+  const captureTabObservationWithRetry = (tabId: number, currentTaskId: string) => {
+    const attempt = () => {
+      chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
+        if (chrome.runtime.lastError || !response?.observation) {
+          // Page may have reloaded/navigated: re-inject content script and retry
+          chrome.scripting.executeScript(
+            {
+              target: { tabId },
+              files: ["content-scripts/content.js"]
+            },
+            () => {
+              setTimeout(() => {
+                chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
+                  if (retryRes?.observation) {
+                    const nextObsMsg: ExtensionMessage = {
+                      type: "OBSERVATION_CAPTURED",
+                      taskId: currentTaskId,
+                      observation: retryRes.observation
+                    };
+                    sendExtensionMessage(nextObsMsg);
+                    setLogs((prev) => [
+                      ...prev,
+                      `Page observed (${retryRes.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
+                    ]);
+                  }
+                });
+              }, 400);
+            }
+          );
+        } else {
+          const nextObsMsg: ExtensionMessage = {
+            type: "OBSERVATION_CAPTURED",
+            taskId: currentTaskId,
+            observation: response.observation
+          };
+          sendExtensionMessage(nextObsMsg);
+          setLogs((prev) => [
+            ...prev,
+            `Page observed (${response.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
+          ]);
+        }
+      });
+    };
 
+    setTimeout(attempt, 450);
+  };
+
+  const waitForTabComplete = async (tabId: number): Promise<void> => {
     await new Promise<void>((resolve) => {
-      const onUpdated = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-        if (tabId === newTab.id && changeInfo.status === "complete") {
+      const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (updatedTabId === tabId && changeInfo.status === "complete") {
           chrome.tabs.onUpdated.removeListener(onUpdated);
           resolve();
         }
@@ -213,9 +258,51 @@ export function App() {
         resolve();
       }, 8000);
     });
+    await new Promise((r) => setTimeout(r, 400));
+  };
 
-    await new Promise((r) => setTimeout(r, 600));
-    return newTab.id;
+  const openAndPrepareTab = async (targetUrl?: string): Promise<number> => {
+    // Check if the user is already on an active tab in the current window
+    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // If no targetUrl is provided, or user is executing a prompt directly:
+    // ALWAYS reuse the current active tab without creating or navigating away!
+    if (!targetUrl || !targetUrl.startsWith("http")) {
+      if (currentTab?.id) {
+        return currentTab.id;
+      }
+    }
+
+    // If targetUrl IS provided:
+    if (targetUrl && targetUrl.startsWith("http")) {
+      // If current tab is already on this target portal, use it directly!
+      if (currentTab?.id && currentTab.url && currentTab.url.startsWith(targetUrl)) {
+        return currentTab.id;
+      }
+
+      // If current tab is a blank or new tab, navigate it instead of opening another tab
+      if (
+        currentTab?.id &&
+        (!currentTab.url ||
+          currentTab.url.startsWith("chrome://") ||
+          currentTab.url.startsWith("about:") ||
+          currentTab.url === "https://www.google.com/")
+      ) {
+        await chrome.tabs.update(currentTab.id, { url: targetUrl });
+        await waitForTabComplete(currentTab.id);
+        return currentTab.id;
+      }
+
+      // Otherwise create a new tab for the target URL
+      const newTab = await chrome.tabs.create({ url: targetUrl, active: true });
+      if (!newTab.id) throw new Error("Unable to create browser tab");
+      await waitForTabComplete(newTab.id);
+      return newTab.id;
+    }
+
+    if (currentTab?.id) return currentTab.id;
+    const fallbackTab = await chrome.tabs.create({ url: "https://www.google.com", active: true });
+    return fallbackTab.id!;
   };
 
   const setupSocket = () => {
@@ -294,7 +381,6 @@ export function App() {
                   body: JSON.stringify({
                     status: "FAILED",
                     durationMs,
-                    summary: "Task execution halted with error",
                     error: errorText,
                     stepsCount: executionStepsCountRef.current
                   })
@@ -310,129 +396,124 @@ export function App() {
             const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
             activeTabId = tab?.id || null;
           }
-          if (!activeTabId) return;
 
-          chrome.tabs.sendMessage(activeTabId, { type: "EXECUTE_ACTION", action: msg.action }, () => {
-            const captureWithRetry = (tabId: number, retryCount = 0) => {
-              chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
-                if (chrome.runtime.lastError || !obsRes?.observation) {
-                  if (retryCount < 6) {
-                    chrome.scripting.executeScript(
-                      { target: { tabId }, files: ["content-scripts/content.js"] },
-                      () => {
-                        setTimeout(() => captureWithRetry(tabId, retryCount + 1), 600);
-                      }
-                    );
+          if (activeTabId) {
+            chrome.tabs.sendMessage(
+              activeTabId,
+              {
+                type: "EXECUTE_ACTION",
+                action: msg.action
+              },
+              (res) => {
+                if (chrome.runtime.lastError) {
+                  // Navigation, form submission or page reload closed the message channel
+                  setLogs((prev) => [...prev, `Page updated / submitted. Capturing next page state...`]);
+                  if (msg.taskId && activeTabId) {
+                    captureTabObservationWithRetry(activeTabId, msg.taskId);
                   }
                   return;
                 }
 
-                if (msg.taskId) {
+                if (res?.observation && msg.taskId) {
                   const nextObsMsg: ExtensionMessage = {
                     type: "OBSERVATION_CAPTURED",
                     taskId: msg.taskId,
-                    observation: obsRes.observation
+                    observation: res.observation
                   };
                   sendExtensionMessage(nextObsMsg);
+                  setLogs((prev) => [
+                    ...prev,
+                    `Page observed (${res.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
+                  ]);
+                } else if (msg.taskId && activeTabId) {
+                  captureTabObservationWithRetry(activeTabId, msg.taskId);
                 }
-              });
-            };
-
-            setTimeout(() => {
-              captureWithRetry(activeTabId!);
-            }, 600);
-          });
-        } else if (msg.type === "TASK_STATE_CHANGED") {
-          setTaskState(msg.state);
-          setLogs((prev) => [...prev, `Status: ${msg.statusMessage}`]);
+              }
+            );
+          }
         }
       } catch {
-        // Handled silently
+        setLogs((prev) => [...prev, "Error parsing server message"]);
       }
     };
 
     ws.onclose = () => {
-      setTimeout(() => {
-        setupSocket();
-      }, 2000);
+      // Reconnect handled on-demand
     };
 
     return ws;
   };
 
   const sendExtensionMessage = (msg: ExtensionMessage) => {
-    try {
-      const ws = setupSocket();
-      if (ws.readyState === WebSocket.OPEN) {
+    const ws = setupSocket();
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    } else {
+      ws.onopen = () => {
         ws.send(JSON.stringify(msg));
-      } else {
-        ws.addEventListener(
-          "open",
-          () => {
-            ws.send(JSON.stringify(msg));
-          },
-          { once: true }
-        );
-      }
-    } catch {
-      // Ignored
+      };
     }
   };
 
   useEffect(() => {
+    setupSocket();
     fetchPendingTasks();
-    const interval = setInterval(fetchPendingTasks, 15000);
-    const ws = setupSocket();
 
-    return () => {
-      clearInterval(interval);
-      ws.close();
+    const handleRuntimeMessage = (message: any) => {
+      if (message.type === "TRIGGER_DUE_TASK" && message.task) {
+        setActiveTab("EXECUTE");
+        handleExecutePendingTask(message.task);
+      }
     };
+
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchPendingTasks();
   }, [searchQuery, statusFilter, priorityFilter, sortBy]);
 
-  const handleStartTask = async (customGoal?: string, targetUrl?: string, pendingTaskId?: string) => {
-    const goalToRun = (customGoal || goal).trim();
-    if (!goalToRun) return;
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const handleStartTask = async (customGoal?: string, customTargetUrl?: string, pendingTaskId?: string) => {
+    const taskGoal = customGoal || goal;
+    if (!taskGoal.trim()) return;
+
+    setLogs([]);
+    setTaskState("PLANNING");
+    setSecurityChallenge(null);
+    setApprovalPrompt(null);
+    setSuccessMessage(null);
+    currentGoalRef.current = taskGoal;
+    executingPendingTaskIdRef.current = pendingTaskId || null;
+    executionStartTimeRef.current = Date.now();
+    executionStepsCountRef.current = 0;
 
     try {
-      setSuccessMessage(null);
-      setLogs([`Opening new tab for task: "${goalToRun}"...`]);
-      setTaskState("UNDERSTANDING");
-      setActiveTab("EXECUTE");
-      currentGoalRef.current = goalToRun;
-      executingPendingTaskIdRef.current = pendingTaskId || null;
-      executionStartTimeRef.current = Date.now();
-      executionStepsCountRef.current = 0;
-
-      let tabId: number;
-      if (targetUrl && targetUrl.startsWith("http")) {
-        setLogs((prev) => [...prev, `Navigating new tab to: ${targetUrl}`]);
-        tabId = await openAndPrepareTab(targetUrl);
-      } else {
-        const [existingTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (existingTab?.id && existingTab.url && !existingTab.url.startsWith("chrome://")) {
-          tabId = existingTab.id;
-        } else {
-          tabId = await openAndPrepareTab("https://www.google.com");
-        }
-      }
+      const tabId = await openAndPrepareTab(customTargetUrl);
       executionTabIdRef.current = tabId;
 
-      const profileParts: string[] = [];
-      if (billerCustomerName) profileParts.push(`User Name: ${billerCustomerName}`);
-      if (billerPhone) profileParts.push(`Phone No: ${billerPhone}`);
-      if (billerEmail) profileParts.push(`Email: ${billerEmail}`);
-
-      let fullGoalPrompt = goalToRun;
-      if (profileParts.length > 0 && !goalToRun.includes("User Name:") && !goalToRun.includes("User Details:")) {
-        fullGoalPrompt = `${goalToRun} (User Profile for autofill: ${profileParts.join(", ")})`;
-      }
+      setLogs((prev) => [...prev, `Navigated to target portal. Initializing autonomous agent...`]);
 
       const res = await fetch("http://127.0.0.1:3001/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: fullGoalPrompt })
+        body: JSON.stringify({ goal: taskGoal })
       });
+
+      if (!res.ok) {
+        throw new Error("Failed to start task on server");
+      }
 
       const data = (await res.json()) as { taskId: string; state: TaskState };
       setTaskId(data.taskId);
@@ -446,7 +527,7 @@ export function App() {
         sendExtensionMessage(observationMsg);
         setLogs((prev) => [
           ...prev,
-          `Page observed (${obs.interactiveNodes.length} interactive elements). Planning next action...`
+          `Page analyzed (${obs.interactiveNodes.length} interactive elements). Planning action sequence...`
         ]);
       };
 
@@ -478,7 +559,7 @@ export function App() {
         }
       });
     } catch {
-      setLogs((prev) => [...prev, "Error: Could not connect to backend server. Make sure `pnpm --filter @difm/server dev` is running."]);
+      setLogs((prev) => [...prev, "Error: Could not connect to backend server. Make sure `pnpm dev` is running."]);
     }
   };
 
@@ -492,14 +573,14 @@ export function App() {
     };
     sendExtensionMessage(approvalMsg);
     setApprovalPrompt(null);
-    setLogs((prev) => [...prev, approved ? "Action approved." : "Action rejected."]);
+    setLogs((prev) => [...prev, approved ? "Action approved by user." : "Action rejected by user."]);
   };
 
   const handleResumeAfterChallenge = async () => {
     if (!taskId) return;
     setSecurityChallenge(null);
     setTaskState("PLANNING");
-    setLogs((prev) => [...prev, "Security challenge resolved. Resuming automated workflow..."]);
+    setLogs((prev) => [...prev, "Verification resolved. Resuming automated workflow..."]);
 
     const resumeMsg: ExtensionMessage = {
       type: "SECURITY_CHALLENGE_RESOLVED",
@@ -700,6 +781,7 @@ export function App() {
       setShowBillerDetails(false);
       setShowScheduleDetails(false);
       setScheduleEnabled(false);
+      setIsCreateOpen(false);
       fetchPendingTasks();
     } catch {
       // Ignored
@@ -805,120 +887,165 @@ export function App() {
         return `${autoBadge} Weekly on ${d}${timeStr}`;
       }
       case "MONTHLY":
-        return `${autoBadge} Monthly on the ${task.schedule.dayOfMonth || 1}th${timeStr}`;
+        return `${autoBadge} Monthly on ${task.schedule.dayOfMonth || 1}th${timeStr}`;
       case "CUSTOM_DAYS":
-        return `${autoBadge} Every ${task.schedule.intervalDays || 1} days${timeStr}`;
+        return `${autoBadge} Every ${task.schedule.intervalDays || 1}d${timeStr}`;
       case "ONCE":
       default:
         return `${autoBadge} Once${timeStr}`;
     }
   };
 
+  const activeScheduledCount = pendingTasks.filter((t) => t.schedule?.enabled && t.status !== "COMPLETED").length;
+  const activePendingCount = pendingTasks.filter((t) => t.status !== "COMPLETED").length;
+  const dueSoonCount = pendingTasks.filter((t) => t.status === "DUE_SOON").length;
+
   return (
-    <div class="p-3.5 flex flex-col h-screen max-w-md mx-auto">
-      <header class="border-b border-slate-800/80 pb-2.5 mb-2.5 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <SparkleIcon size={18} class="text-indigo-400 shrink-0" />
-          <div class="flex flex-col">
-            <h1 class="text-sm font-bold text-indigo-400 leading-tight whitespace-nowrap">Do It For Me</h1>
-            <span class="text-[10px] text-slate-500 font-mono leading-none">Autonomous Action & Scheduler</span>
+    <div class="relative min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-3 sm:p-4 max-w-full selection:bg-indigo-500/30 selection:text-indigo-200">
+      {/* Aceternity ambient glow backdrop */}
+      <div class="ambient-glow" />
+
+      {/* Header Section */}
+      <header class="relative z-10 flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-glow-sm shrink-0">
+            <SparkleIcon size={15} class="text-white" />
           </div>
+          <div class="flex flex-col min-w-0">
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-xs sm:text-sm font-bold bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent truncate tracking-tight">
+                Do It For Me
+              </h1>
+              <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-widest shrink-0">
+                Agent v2
+              </span>
+            </div>
+            <p class="text-[10px] text-zinc-400 font-medium truncate">
+              Autonomous Web Actions & Schedules
+            </p>
+          </div>
+        </div>
+
+        {/* Live Indicator */}
+        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-900/90 border border-white/[0.08] text-[10px] text-zinc-400 shrink-0">
+          <span
+            class={`w-1.5 h-1.5 rounded-full ${
+              taskState === "EXECUTING" || taskState === "PLANNING"
+                ? "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"
+                : taskState === "COMPLETED"
+                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                : "bg-emerald-500"
+            }`}
+          />
+          <span class="font-mono text-[9px] uppercase tracking-wider text-zinc-300">
+            {taskState || "READY"}
+          </span>
         </div>
       </header>
 
-      {/* Segmented Tab Navigation */}
-      <div class="grid grid-cols-2 gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 mb-3 text-xs">
+      {/* Modern Segmented Tab Navigation */}
+      <nav class="relative z-10 grid grid-cols-2 gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/[0.08] mb-3.5 backdrop-blur-md">
         <button
           onClick={() => setActiveTab("EXECUTE")}
-          class={`py-1.5 px-2 rounded-md font-medium inline-flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
+          class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "EXECUTE"
-              ? "bg-indigo-600 text-white shadow-sm"
-              : "text-slate-400 hover:text-white"
+              ? "bg-gradient-to-r from-indigo-500/20 via-indigo-600/20 to-violet-500/20 border border-indigo-500/40 text-indigo-200 shadow-glow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
-          <LightningIcon size={14} class="shrink-0" />
-          <span>Action</span>
+          <LightningIcon size={14} class={activeTab === "EXECUTE" ? "text-indigo-400" : "text-zinc-400"} />
+          <span>Execute Action</span>
         </button>
+
         <button
           onClick={() => setActiveTab("PENDING")}
-          class={`py-1.5 px-2 rounded-md font-medium inline-flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
+          class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "PENDING"
-              ? "bg-indigo-600 text-white shadow-sm"
-              : "text-slate-400 hover:text-white"
+              ? "bg-gradient-to-r from-indigo-500/20 via-indigo-600/20 to-violet-500/20 border border-indigo-500/40 text-indigo-200 shadow-glow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
-          <ListChecksIcon size={14} class="shrink-0" />
-          <span>Task Hub</span>
-          {pendingTasks.filter((t) => t.status !== "COMPLETED").length > 0 && (
-            <span class="bg-indigo-950 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-indigo-700 leading-none">
-              {pendingTasks.filter((t) => t.status !== "COMPLETED").length}
+          <ListChecksIcon size={14} class={activeTab === "PENDING" ? "text-indigo-400" : "text-zinc-400"} />
+          <span>Tasks & Schedules</span>
+          {activePendingCount > 0 && (
+            <span class="ml-0.5 px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-mono">
+              {activePendingCount}
             </span>
           )}
         </button>
-      </div>
+      </nav>
 
-      {/* Dynamic Notifications Banner */}
-      {(remindersDue.length > 0 || (scheduledReady && scheduledReady.length > 0)) && (
-        <div class="bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5 mb-3 space-y-1.5 animate-pulse">
-          <div class="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
-            <ClockIcon size={15} class="text-amber-400 shrink-0" />
-            <span>Scheduled & Due Tasks Ready:</span>
-          </div>
-          <div class="text-[11px] text-slate-300 space-y-1">
-            {[...remindersDue, ...(scheduledReady || [])].slice(0, 3).map((t) => (
-              <div key={t.id} class="flex items-center justify-between bg-amber-950/30 p-1 rounded">
-                <span class="truncate max-w-[200px]">• {t.title}</span>
-                <button
-                  onClick={() => handleExecutePendingTask(t)}
-                  class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 shrink-0"
-                >
-                  <PlayIcon size={10} />
-                  <span>Execute Now</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
+      {/* EXECUTE TAB VIEW */}
       {activeTab === "EXECUTE" && (
-        <>
-          <div class="mb-4">
-            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-              Outcome Goal
-            </label>
-            <div class="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="e.g. submit the form or Pay electricity bill"
-                value={goal}
-                onInput={(e) => setGoal((e.target as HTMLInputElement).value)}
-                disabled={taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED"}
-                class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50 text-slate-100"
-              />
-              <button
-                onClick={() => handleStartTask()}
-                disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED")}
-                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap shadow-sm"
-              >
-                <PlayIcon size={14} class="shrink-0" />
-                <span>Start</span>
-              </button>
+        <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
+          {/* Goal Input Glass Card */}
+          <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
+                <SparkleIcon size={13} class="text-indigo-400" />
+                <span>What should the agent do?</span>
+              </label>
+              <span class="text-[10px] text-zinc-500">Autonomous workflow</span>
             </div>
+
+            <textarea
+              rows={3}
+              placeholder="e.g., Go to CESC bill portal, fill account 102938492, verify amount, and prepare payment..."
+              value={goal}
+              onInput={(e) => setGoal((e.target as HTMLTextAreaElement).value)}
+              class="w-full glass-input rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-indigo-500/20 resize-none leading-relaxed"
+            />
+
+            {/* Quick Suggestion Pills */}
+            <div class="flex flex-wrap gap-1.5 pt-0.5">
+              {[
+                "Autofill contact & feedback form",
+                "Pay electricity bill on CESC",
+                "Verify shopping cart & coupon",
+                "Check broadband statement"
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => setGoal(suggestion)}
+                  class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-indigo-300 border border-white/[0.05] transition truncate max-w-full"
+                >
+                  + {suggestion}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => handleStartTask()}
+              disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
+              class="w-full shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
+            >
+              {taskState === "EXECUTING" || taskState === "PLANNING" ? (
+                <>
+                  <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Agent is executing...</span>
+                </>
+              ) : (
+                <>
+                  <PlayIcon size={13} class="text-white fill-current" />
+                  <span>Execute Goal in Tab</span>
+                </>
+              )}
+            </button>
           </div>
 
+          {/* Success Banner */}
           {successMessage && (
-            <div class="bg-emerald-950/60 border border-emerald-500/60 rounded-lg p-3.5 mb-3 shadow-lg shadow-emerald-950/40">
+            <div class="glass-panel bg-emerald-950/40 border-emerald-500/40 rounded-xl p-3.5 shadow-glow-emerald animate-scale-in">
               <div class="flex items-start gap-2.5">
-                <CheckCircleIcon size={24} class="text-emerald-400 shrink-0" />
+                <CheckCircleIcon size={20} class="text-emerald-400 shrink-0 mt-0.5" />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between">
                     <h3 class="text-xs font-bold text-emerald-300">{successMessage.title}</h3>
                     <button
                       onClick={() => setSuccessMessage(null)}
-                      class="text-slate-400 hover:text-white text-xs p-0.5"
+                      class="text-zinc-400 hover:text-white p-0.5 transition"
                     >
-                      <XIcon size={14} />
+                      <XIcon size={13} />
                     </button>
                   </div>
                   <p class="text-[11px] text-emerald-100/90 mt-1 leading-relaxed">{successMessage.summary}</p>
@@ -930,16 +1057,16 @@ export function App() {
                         setLogs([]);
                         setTaskState(null);
                       }}
-                      class="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-2.5 py-1 rounded transition"
+                      class="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-2.5 py-1 rounded-md transition"
                     >
-                      Start Another Task
+                      New Goal
                     </button>
                     <button
                       onClick={() => {
                         setSuccessMessage(null);
                         setActiveTab("PENDING");
                       }}
-                      class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition"
+                      class="text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded-md border border-white/[0.08] transition"
                     >
                       View Tasks & Schedules
                     </button>
@@ -949,400 +1076,498 @@ export function App() {
             </div>
           )}
 
+          {/* Security Challenge / Human Takeover Alert */}
           {securityChallenge && (
-            <div class="bg-indigo-950/70 border border-indigo-500/60 rounded-lg p-3 mb-4 shadow-lg shadow-indigo-950/50">
-              <div class="flex items-center gap-2 mb-1.5">
-                <ShieldCheckIcon size={18} class="text-indigo-400 shrink-0" />
-                <h3 class="text-xs font-bold text-indigo-300">Security Verification Required</h3>
-              </div>
-              <p class="text-xs text-slate-200 mb-1 leading-relaxed">{securityChallenge.description}</p>
-              <p class="text-[11px] text-indigo-200/80 mb-3">
-                Please complete verification on the active webpage. The agent is paused and ready to resume.
-              </p>
-              <button
-                onClick={handleResumeAfterChallenge}
-                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 rounded transition inline-flex items-center justify-center gap-1.5 shadow-sm"
-              >
-                <CheckCircleIcon size={14} class="shrink-0" />
-                <span>I've Solved It — Resume Action</span>
-              </button>
-            </div>
-          )}
-
-          {approvalPrompt && (
-            <div class="bg-amber-950/40 border border-amber-500/50 rounded-lg p-3 mb-4">
-              <div class="flex items-center gap-1.5 mb-1">
-                <WarningCircleIcon size={16} class="text-amber-400" />
-                <h3 class="text-sm font-semibold text-amber-300">Sensitive Approval Required</h3>
-              </div>
-              <p class="text-xs text-slate-300 mb-2">{approvalPrompt.summary}</p>
-              <p class="text-xs text-amber-200/80 mb-3">{approvalPrompt.consequences}</p>
-              <div class="flex gap-2">
-                <button
-                  onClick={() => handleDecision(true)}
-                  class="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium py-1.5 rounded transition"
-                >
-                  Approve & Continue
-                </button>
-                <button
-                  onClick={() => handleDecision(false)}
-                  class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium py-1.5 rounded transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div class="flex-1 flex flex-col min-h-0">
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Execution Log
-              </label>
-              {taskState && (
-                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-indigo-300">
-                  {taskState}
-                </span>
-              )}
-            </div>
-            <div class="flex-1 bg-slate-950 border border-slate-800 rounded p-3 overflow-y-auto font-mono text-xs text-slate-300 space-y-1">
-              {logs.length === 0 ? (
-                <span class="text-slate-600">Waiting for task initiation...</span>
-              ) : (
-                logs.map((log, index) => (
-                  <div key={index} class="leading-relaxed">
-                    {log}
+            <div class="glass-panel bg-amber-950/40 border-amber-500/50 rounded-xl p-3.5 shadow-lg shadow-amber-950/40 animate-scale-in">
+              <div class="flex items-start gap-2.5">
+                <WarningCircleIcon size={20} class="text-amber-400 shrink-0 mt-0.5" />
+                <div class="flex-1 min-w-0">
+                  <h3 class="text-xs font-bold text-amber-300">Human Verification Required</h3>
+                  <p class="text-[11px] text-amber-100/90 mt-1 leading-relaxed">
+                    {securityChallenge.description || "Please solve the security challenge (CAPTCHA / 2FA) in the browser tab."}
+                  </p>
+                  <div class="mt-2.5 flex items-center gap-2">
+                    <button
+                      onClick={handleResumeAfterChallenge}
+                      class="text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1 rounded-md transition inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                    >
+                      <CheckCircleIcon size={12} />
+                      <span>I Solved It, Continue</span>
+                    </button>
                   </div>
-                ))
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sensitive Action User Approval Card */}
+          {approvalPrompt && (
+            <div class="glass-panel bg-indigo-950/50 border-indigo-500/50 rounded-xl p-3.5 shadow-glow-indigo animate-scale-in">
+              <div class="flex items-start gap-2.5">
+                <ShieldCheckIcon size={20} class="text-indigo-400 shrink-0 mt-0.5" />
+                <div class="flex-1 min-w-0">
+                  <h3 class="text-xs font-bold text-indigo-200">Confirmation Required</h3>
+                  <p class="text-xs text-zinc-200 mt-1 font-medium leading-relaxed">{approvalPrompt.summary}</p>
+                  <p class="text-[11px] text-zinc-400 mt-0.5">{approvalPrompt.consequences}</p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => handleDecision(true)}
+                      class="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1 rounded-md transition shadow-sm active:scale-95"
+                    >
+                      Approve & Continue
+                    </button>
+                    <button
+                      onClick={() => handleDecision(false)}
+                      class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded-md border border-white/[0.08] transition active:scale-95"
+                    >
+                      Cancel Action
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live Terminal & Logs Card */}
+          <div class="glass-panel rounded-xl flex-1 flex flex-col min-h-[180px] overflow-hidden shadow-glass">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-zinc-950/80">
+              <div class="flex items-center gap-2 text-zinc-400 text-[11px] font-semibold">
+                <div class="flex gap-1">
+                  <div class="w-2 h-2 rounded-full bg-rose-500/60" />
+                  <div class="w-2 h-2 rounded-full bg-amber-500/60" />
+                  <div class="w-2 h-2 rounded-full bg-emerald-500/60" />
+                </div>
+                <span class="ml-1 text-zinc-300">Execution Logs</span>
+              </div>
+              <div class="flex items-center gap-2">
+                {logs.length > 0 && (
+                  <button
+                    onClick={() => setLogs([])}
+                    class="text-[10px] text-zinc-400 hover:text-zinc-200 transition"
+                  >
+                    Clear
+                  </button>
+                )}
+                <span class="text-[10px] text-zinc-400 font-mono">
+                  {logs.length} events
+                </span>
+              </div>
+            </div>
+
+            <div
+              ref={logContainerRef}
+              class="flex-1 p-3 overflow-y-auto font-mono text-[11px] space-y-1.5 bg-zinc-950/90 text-zinc-300 select-text leading-relaxed"
+            >
+              {logs.length === 0 ? (
+                <div class="h-full flex flex-col items-center justify-center text-zinc-400 text-center py-6 space-y-1">
+                  <SparkleIcon size={18} class="text-zinc-400" />
+                  <p class="text-xs">Agent is idle and ready.</p>
+                  <p class="text-[10px]">Enter a prompt above and click Execute Goal.</p>
+                </div>
+              ) : (
+                logs.map((log, index) => {
+                  const isError = log.toLowerCase().includes("error") || log.toLowerCase().includes("failed");
+                  const isSuccess = log.toLowerCase().includes("completed") || log.toLowerCase().includes("success");
+                  const isAction = log.toLowerCase().includes("executing:") || log.toLowerCase().includes("action");
+                  const isVerification = log.toLowerCase().includes("verification") || log.toLowerCase().includes("challenge");
+
+                  return (
+                    <div
+                      key={index}
+                      class={`flex items-start gap-2 py-0.5 transition ${
+                        isError
+                          ? "text-rose-400 bg-rose-950/20 px-1.5 rounded border border-rose-900/30"
+                          : isSuccess
+                          ? "text-emerald-400 bg-emerald-950/20 px-1.5 rounded border border-emerald-900/30"
+                          : isVerification
+                          ? "text-amber-300 bg-amber-950/20 px-1.5 rounded border border-amber-900/30"
+                          : isAction
+                          ? "text-indigo-300"
+                          : "text-zinc-300"
+                      }`}
+                    >
+                      <span class="text-zinc-400 select-none text-[10px] shrink-0">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span class="break-all whitespace-pre-wrap flex-1">{log}</span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
+      {/* PENDING TASKS & SCHEDULER TAB VIEW */}
       {activeTab === "PENDING" && (
-        <div class="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-3.5 pr-0.5">
-          {/* Create Task & Scheduler Card */}
-          <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2 text-xs font-bold text-indigo-300 uppercase tracking-wider">
-                <PlusIcon size={14} class="shrink-0" />
-                <span>New Task & Schedule</span>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <select
-                  value={newTaskPriority}
-                  onChange={(e) => setNewTaskPriority((e.target as HTMLSelectElement).value as TaskPriority)}
-                  class="bg-slate-900 border border-slate-700 text-[10px] text-slate-300 rounded px-1.5 py-0.5 focus:outline-none"
-                >
-                  <option value="LOW">Low Priority</option>
-                  <option value="MEDIUM">Medium Priority</option>
-                  <option value="HIGH">High Priority</option>
-                </select>
-              </div>
+        <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
+          {/* Smart Metrics Bar */}
+          <div class="grid grid-cols-3 gap-2">
+            <div class="glass-card rounded-xl p-2.5 flex flex-col justify-between shadow-subtle">
+              <span class="text-[10px] text-zinc-400 font-medium">Active Tasks</span>
+              <span class="text-base font-bold text-zinc-100 font-mono mt-0.5">{activePendingCount}</span>
             </div>
-
-            <input
-              type="text"
-              placeholder="Task name (e.g. Pay CESC Bill, Submit Monthly Form)"
-              value={newTaskTitle}
-              onInput={(e) => setNewTaskTitle((e.target as HTMLInputElement).value)}
-              class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-            />
-
-            <div class="flex gap-2 items-center">
-              <input
-                type="date"
-                title="Due Date"
-                value={newTaskDueDate}
-                onInput={(e) => setNewTaskDueDate((e.target as HTMLInputElement).value)}
-                class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowScheduleDetails(!showScheduleDetails)}
-                class={`h-8 text-xs px-2.5 rounded border inline-flex items-center justify-center gap-1 shrink-0 whitespace-nowrap transition ${
-                  showScheduleDetails || scheduleEnabled
-                    ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
-                    : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
-                }`}
-              >
-                <RepeatIcon size={13} class="shrink-0" />
-                <span>{scheduleEnabled ? "Scheduled" : "+ Schedule"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowBillerDetails(!showBillerDetails)}
-                class={`h-8 text-xs px-2.5 rounded border inline-flex items-center justify-center gap-1 shrink-0 whitespace-nowrap transition ${
-                  showBillerDetails
-                    ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
-                    : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
-                }`}
-              >
-                <UserIcon size={13} class="shrink-0" />
-                <span>+ Details</span>
-              </button>
+            <div class="glass-card rounded-xl p-2.5 flex flex-col justify-between shadow-subtle">
+              <span class="text-[10px] text-indigo-400 font-medium">Scheduled</span>
+              <span class="text-base font-bold text-indigo-300 font-mono mt-0.5">{activeScheduledCount}</span>
             </div>
+            <div class="glass-card rounded-xl p-2.5 flex flex-col justify-between shadow-subtle">
+              <span class="text-[10px] text-amber-400 font-medium">Due Soon</span>
+              <span class="text-base font-bold text-amber-300 font-mono mt-0.5">{dueSoonCount}</span>
+            </div>
+          </div>
 
-            {/* Recurring Schedule Builder Drawer */}
-            {showScheduleDetails && (
-              <div class="bg-slate-900/95 border border-indigo-900/70 rounded p-2.5 space-y-2.5 text-xs animate-in">
-                <div class="flex items-center justify-between pb-1 border-b border-slate-800">
-                  <div class="flex items-center gap-1.5 text-indigo-300 font-semibold text-[11px]">
-                    <CalendarIcon size={14} />
-                    <span>Recurring Schedule & Auto-Execution</span>
-                  </div>
-                  <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={scheduleEnabled}
-                      onChange={(e) => setScheduleEnabled((e.target as HTMLInputElement).checked)}
-                      class="rounded bg-slate-950 border-slate-700 text-indigo-600"
-                    />
-                    <span>Enable Schedule</span>
+          {/* Creation Section Toggle Button */}
+          <div class="glass-panel rounded-xl overflow-hidden shadow-glass">
+            <button
+              onClick={() => setIsCreateOpen(!isCreateOpen)}
+              class="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-zinc-200 hover:text-white hover:bg-white/[0.03] transition"
+            >
+              <div class="flex items-center gap-2">
+                <div class="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                  <PlusIcon size={12} />
+                </div>
+                <span>Create New Task or Recurring Schedule</span>
+              </div>
+              {isCreateOpen ? <CaretUpIcon size={13} /> : <CaretDownIcon size={13} />}
+            </button>
+
+            {/* Creation Form Accordion Content */}
+            {isCreateOpen && (
+              <div class="p-3.5 pt-1 border-t border-white/[0.06] space-y-3 text-xs animate-slide-down">
+                {/* Title & Priority Row */}
+                <div class="space-y-1">
+                  <label class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                    Task Title <span class="text-rose-400">*</span>
                   </label>
-                </div>
-
-                {scheduleEnabled && (
-                  <>
-                    <div class="grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Frequency</label>
-                        <select
-                          value={scheduleFreq}
-                          onChange={(e) => setScheduleFreq((e.target as HTMLSelectElement).value as ScheduleFrequency)}
-                          class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none"
-                        >
-                          <option value="ONCE">One-Time Run</option>
-                          <option value="DAILY">Daily</option>
-                          <option value="WEEKLY">Weekly</option>
-                          <option value="MONTHLY">Monthly</option>
-                          <option value="CUSTOM_DAYS">Custom Interval</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Trigger Time</label>
-                        <input
-                          type="time"
-                          value={scheduleTime}
-                          onInput={(e) => setScheduleTime((e.target as HTMLInputElement).value)}
-                          class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {scheduleFreq === "MONTHLY" && (
-                      <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Day of Month (1 - 31)</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={31}
-                          value={scheduleDayOfMonth}
-                          onInput={(e) => setScheduleDayOfMonth(Number((e.target as HTMLInputElement).value))}
-                          class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none"
-                        />
-                      </div>
-                    )}
-
-                    {scheduleFreq === "WEEKLY" && (
-                      <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Day of Week</label>
-                        <select
-                          value={scheduleDayOfWeek}
-                          onChange={(e) => setScheduleDayOfWeek(Number((e.target as HTMLSelectElement).value))}
-                          class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none"
-                        >
-                          <option value={1}>Monday</option>
-                          <option value={2}>Tuesday</option>
-                          <option value={3}>Wednesday</option>
-                          <option value={4}>Thursday</option>
-                          <option value={5}>Friday</option>
-                          <option value={6}>Saturday</option>
-                          <option value={0}>Sunday</option>
-                        </select>
-                      </div>
-                    )}
-
-                    {scheduleFreq === "CUSTOM_DAYS" && (
-                      <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Repeat Every N Days</label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={365}
-                          value={scheduleIntervalDays}
-                          onInput={(e) => setScheduleIntervalDays(Number((e.target as HTMLInputElement).value))}
-                          class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none"
-                        />
-                      </div>
-                    )}
-
-                    <div class="bg-indigo-950/40 p-2 rounded border border-indigo-900/50 flex items-center justify-between">
-                      <div class="flex flex-col">
-                        <span class="text-[11px] font-semibold text-indigo-300">Auto-Execute with Agent</span>
-                        <span class="text-[10px] text-slate-400">Launch agent automatically at scheduled time</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={scheduleAutoExecute}
-                        onChange={(e) => setScheduleAutoExecute((e.target as HTMLInputElement).checked)}
-                        class="rounded bg-slate-950 border-slate-700 text-indigo-600"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Biller & Form Details Drawer */}
-            {showBillerDetails && (
-              <div class="bg-slate-900/95 border border-indigo-900/60 rounded p-2.5 space-y-2.5 text-xs">
-                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-2">
-                  <UserIcon size={14} class="shrink-0" />
-                  <span>User Profile & Form Details</span>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Action Category</label>
+                  <div class="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Pay Monthly Electricity Bill, Submit Contact Form"
+                      value={newTaskTitle}
+                      onInput={(e) => setNewTaskTitle((e.target as HTMLInputElement).value)}
+                      class="flex-1 glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-100 placeholder-zinc-500"
+                    />
                     <select
-                      value={billerType}
-                      onChange={(e) => setBillerType((e.target as HTMLSelectElement).value as TaskCategory)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      value={newTaskPriority}
+                      onChange={(e) => setNewTaskPriority((e.target as HTMLSelectElement).value as TaskPriority)}
+                      class="glass-input rounded-lg px-2 h-8 text-[11px] text-zinc-200 font-medium shrink-0"
                     >
-                      <option value="GENERAL">General Web Action</option>
-                      <option value="FORM_FILL">Form Autofill / Contact</option>
-                      <option value="ELECTRICITY">Electricity Bill</option>
-                      <option value="WATER">Water Bill</option>
-                      <option value="GAS">Gas Bill</option>
-                      <option value="INTERNET">Internet / Broadband</option>
-                      <option value="MOBILE">Mobile / Recharge</option>
-                      <option value="CREDIT_CARD">Credit Card</option>
-                      <option value="SHOPPING">Shopping / Price Check</option>
-                      <option value="OTHER">Other</option>
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
                     </select>
                   </div>
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Site / Service Name</label>
+                </div>
+
+                {/* Due Date & Action Buttons Drawer Controls */}
+                <div class="grid grid-cols-3 gap-2 items-center">
+                  <div class="space-y-0.5">
+                    <label class="text-[10px] text-zinc-400 block font-medium">Due Date</label>
                     <input
-                      type="text"
-                      placeholder="e.g. Google Demo, CESC"
-                      value={billerProvider}
-                      onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      type="date"
+                      value={newTaskDueDate}
+                      onInput={(e) => setNewTaskDueDate((e.target as HTMLInputElement).value)}
+                      class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                     />
+                  </div>
+                  <div class="space-y-0.5">
+                    <label class="text-[10px] text-zinc-400 block font-medium">Recurrence</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowScheduleDetails(!showScheduleDetails)}
+                      class={`w-full h-8 text-xs px-2 rounded-lg border inline-flex items-center justify-center gap-1.5 transition ${
+                        showScheduleDetails || scheduleEnabled
+                          ? "bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-glow-sm"
+                          : "glass-input text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      <RepeatIcon size={12} class="shrink-0" />
+                      <span class="truncate">{scheduleEnabled ? "Configured" : "+ Schedule"}</span>
+                    </button>
+                  </div>
+                  <div class="space-y-0.5">
+                    <label class="text-[10px] text-zinc-400 block font-medium">Profile Info</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowBillerDetails(!showBillerDetails)}
+                      class={`w-full h-8 text-xs px-2 rounded-lg border inline-flex items-center justify-center gap-1.5 transition ${
+                        showBillerDetails
+                          ? "bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-glow-sm"
+                          : "glass-input text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      <UserIcon size={12} class="shrink-0" />
+                      <span class="truncate">+ Profile</span>
+                    </button>
                   </div>
                 </div>
 
-                <div>
-                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Target Webpage / Form URL</label>
-                  <input
-                    type="url"
-                    placeholder="https://... or portal URL"
-                    value={billerPortalUrl}
-                    onInput={(e) => setBillerPortalUrl((e.target as HTMLInputElement).value)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
+                {/* Schedule Drawer */}
+                {showScheduleDetails && (
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-indigo-500/30 animate-fade-in">
+                    <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
+                      <div class="flex items-center gap-1.5 text-indigo-300 font-semibold text-[11px]">
+                        <CalendarIcon size={13} />
+                        <span>Recurring Automation & Alarms</span>
+                      </div>
+                      <label class="flex items-center gap-1.5 text-[11px] text-zinc-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={scheduleEnabled}
+                          onChange={(e) => setScheduleEnabled((e.target as HTMLInputElement).checked)}
+                          class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                        />
+                        <span>Enable Schedule</span>
+                      </label>
+                    </div>
 
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Account / ID No.</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 102938492"
-                      value={billerConsumerNo}
-                      onInput={(e) => setBillerConsumerNo((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Subdivision / Area</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. North Zone"
-                      value={billerSubdivision}
-                      onInput={(e) => setBillerSubdivision((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
+                    {scheduleEnabled && (
+                      <>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Frequency</label>
+                            <select
+                              value={scheduleFreq}
+                              onChange={(e) => setScheduleFreq((e.target as HTMLSelectElement).value as ScheduleFrequency)}
+                              class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                            >
+                              <option value="ONCE">One-Time Run</option>
+                              <option value="DAILY">Daily</option>
+                              <option value="WEEKLY">Weekly</option>
+                              <option value="MONTHLY">Monthly</option>
+                              <option value="CUSTOM_DAYS">Custom Interval</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Trigger Time</label>
+                            <input
+                              type="time"
+                              value={scheduleTime}
+                              onInput={(e) => setScheduleTime((e.target as HTMLInputElement).value)}
+                              class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                            />
+                          </div>
+                        </div>
 
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">First Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. John"
-                      value={billerFirstName}
-                      onInput={(e) => setBillerFirstName((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Last Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Doe"
-                      value={billerLastName}
-                      onInput={(e) => setBillerLastName((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
+                        {scheduleFreq === "MONTHLY" && (
+                          <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Day of Month (1 - 31)</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={scheduleDayOfMonth}
+                              onInput={(e) => setScheduleDayOfMonth(Number((e.target as HTMLInputElement).value))}
+                              class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                            />
+                          </div>
+                        )}
 
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Phone Number</label>
-                    <input
-                      type="tel"
-                      placeholder="e.g. 8888989261"
-                      value={billerPhone}
-                      onInput={(e) => setBillerPhone((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="e.g. demo56@gmail.com"
-                      value={billerEmail}
-                      onInput={(e) => setBillerEmail((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
+                        {scheduleFreq === "WEEKLY" && (
+                          <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Day of Week</label>
+                            <select
+                              value={scheduleDayOfWeek}
+                              onChange={(e) => setScheduleDayOfWeek(Number((e.target as HTMLSelectElement).value))}
+                              class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                            >
+                              <option value={1}>Monday</option>
+                              <option value={2}>Tuesday</option>
+                              <option value={3}>Wednesday</option>
+                              <option value={4}>Thursday</option>
+                              <option value={5}>Friday</option>
+                              <option value={6}>Saturday</option>
+                              <option value={0}>Sunday</option>
+                            </select>
+                          </div>
+                        )}
 
-                <div>
-                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Action Instructions</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Fill form and submit"
-                    value={billerInstructions}
-                    onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
+                        {scheduleFreq === "CUSTOM_DAYS" && (
+                          <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Repeat Every N Days</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={365}
+                              value={scheduleIntervalDays}
+                              onInput={(e) => setScheduleIntervalDays(Number((e.target as HTMLInputElement).value))}
+                              class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                            />
+                          </div>
+                        )}
+
+                        <div class="bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/20 flex items-center justify-between">
+                          <div class="flex flex-col">
+                            <span class="text-[11px] font-semibold text-indigo-300">Auto-Execute with Agent</span>
+                            <span class="text-[10px] text-zinc-400">Launch autonomous browser run at scheduled time</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={scheduleAutoExecute}
+                            onChange={(e) => setScheduleAutoExecute((e.target as HTMLInputElement).checked)}
+                            class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Profile Details Drawer */}
+                {showBillerDetails && (
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-indigo-500/30 animate-fade-in">
+                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                      <UserIcon size={13} />
+                      <span>User Profile & Autofill Credentials</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Category</label>
+                        <select
+                          value={billerType}
+                          onChange={(e) => setBillerType((e.target as HTMLSelectElement).value as TaskCategory)}
+                          class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                        >
+                          <option value="GENERAL">General Web</option>
+                          <option value="FORM_FILL">Form Autofill</option>
+                          <option value="ELECTRICITY">Electricity</option>
+                          <option value="WATER">Water</option>
+                          <option value="GAS">Gas</option>
+                          <option value="INTERNET">Internet</option>
+                          <option value="MOBILE">Mobile</option>
+                          <option value="CREDIT_CARD">Credit Card</option>
+                          <option value="SHOPPING">Shopping</option>
+                          <option value="OTHER">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Site / Provider</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Google Demo, CESC"
+                          value={billerProvider}
+                          onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1">Target Webpage / Form URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={billerPortalUrl}
+                        onInput={(e) => setBillerPortalUrl((e.target as HTMLInputElement).value)}
+                        class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                      />
+                    </div>
+
+                    {/* Separate First Name & Last Name */}
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">First Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. John"
+                          value={billerFirstName}
+                          onInput={(e) => setBillerFirstName((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Last Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Doe"
+                          value={billerLastName}
+                          onInput={(e) => setBillerLastName((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Phone Number</label>
+                        <input
+                          type="tel"
+                          placeholder="e.g. 8888989261"
+                          value={billerPhone}
+                          onInput={(e) => setBillerPhone((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="e.g. demo56@gmail.com"
+                          value={billerEmail}
+                          onInput={(e) => setBillerEmail((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Account / ID No</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 102938492"
+                          value={billerConsumerNo}
+                          onInput={(e) => setBillerConsumerNo((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Subdivision / Area</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. North Zone"
+                          value={billerSubdivision}
+                          onInput={(e) => setBillerSubdivision((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1">Action Instructions</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Fill form and submit"
+                        value={billerInstructions}
+                        onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
+                        class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes Textarea */}
+                <textarea
+                  placeholder="Notes, reminders, order IDs, or general instructions..."
+                  value={newTaskNotes}
+                  onInput={(e) => setNewTaskNotes((e.target as HTMLTextAreaElement).value)}
+                  rows={2}
+                  class="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 resize-none leading-relaxed"
+                />
+
+                <button
+                  onClick={handleCreatePendingTask}
+                  disabled={!newTaskTitle.trim()}
+                  class="w-full shimmer-btn h-8 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 shadow-glow-sm active:scale-[0.98] transition"
+                >
+                  <PlusIcon size={13} />
+                  <span>Save Task & Schedule</span>
+                </button>
               </div>
             )}
-
-            <textarea
-              placeholder="Notes, reminders, order IDs, or general instructions..."
-              value={newTaskNotes}
-              onInput={(e) => setNewTaskNotes((e.target as HTMLTextAreaElement).value)}
-              rows={2}
-              class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 resize-none"
-            />
-
-            <button
-              onClick={handleCreatePendingTask}
-              disabled={!newTaskTitle.trim()}
-              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold h-8 rounded transition inline-flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
-            >
-              <PlusIcon size={14} class="shrink-0" />
-              <span>Save & Schedule Task</span>
-            </button>
           </div>
 
           {/* Search, Filter & Sort Controls */}
@@ -1350,32 +1575,32 @@ export function App() {
             <div class="relative">
               <input
                 type="text"
-                placeholder="Search tasks, notes, or URLs..."
+                placeholder="Search tasks, notes, or target URLs..."
                 value={searchQuery}
                 onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-                class="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                class="w-full glass-input rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-100 placeholder-zinc-500"
               />
-              <MagnifyingGlassIcon size={14} class="absolute left-2.5 top-2.5 text-slate-500 pointer-events-none" />
+              <MagnifyingGlassIcon size={13} class="absolute left-2.5 top-2.5 text-zinc-500 pointer-events-none" />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  class="absolute right-2.5 top-2.5 text-slate-400 hover:text-white text-xs"
+                  class="absolute right-2.5 top-2 text-zinc-400 hover:text-white p-0.5"
                 >
                   <XIcon size={12} />
                 </button>
               )}
             </div>
 
-            <div class="flex items-center justify-between gap-1 text-[10px]">
+            <div class="flex items-center justify-between gap-1.5 text-[10px]">
               <div class="flex gap-1 overflow-x-auto py-0.5 scrollbar-none">
                 {["ALL", "PENDING", "SCHEDULED", "DUE_SOON", "COMPLETED"].map((st) => (
                   <button
                     key={st}
                     onClick={() => setStatusFilter(st)}
-                    class={`px-2 py-0.5 rounded font-medium whitespace-nowrap transition ${
+                    class={`px-2 py-0.5 rounded-md font-medium whitespace-nowrap transition ${
                       statusFilter === st
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : "bg-slate-900 text-slate-400 hover:text-slate-200"
+                        ? "bg-indigo-600 text-white shadow-sm border border-indigo-500/50"
+                        : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-white/[0.05]"
                     }`}
                   >
                     {st === "ALL" ? "All" : st.replace("_", " ")}
@@ -1386,106 +1611,106 @@ export function App() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy((e.target as HTMLSelectElement).value as any)}
-                class="bg-slate-900 border border-slate-800 text-[10px] text-slate-400 rounded px-1.5 py-0.5 focus:outline-none"
+                class="bg-zinc-900 border border-white/[0.08] text-[10px] text-zinc-300 rounded-md px-1.5 py-0.5 shrink-0"
               >
-                <option value="created">Sort: Created</option>
-                <option value="dueDate">Sort: Due Date</option>
-                <option value="nextRun">Sort: Next Run</option>
-                <option value="priority">Sort: Priority</option>
+                <option value="created">Created</option>
+                <option value="dueDate">Due Date</option>
+                <option value="nextRun">Next Run</option>
+                <option value="priority">Priority</option>
               </select>
             </div>
           </div>
 
           {/* Task List Section */}
-          <div class="space-y-2.5">
-            <div class="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <span class="flex items-center gap-1.5">
-                <ListChecksIcon size={14} />
-                Tasks & Schedules ({pendingTasks.length})
-              </span>
-            </div>
-
+          <div class="flex-1 space-y-2.5 overflow-y-auto pr-0.5 min-h-[160px]">
             {pendingTasks.length === 0 ? (
-              <div class="text-xs text-slate-500 text-center py-8">
-                {searchQuery ? "No matching tasks found." : "No tasks created yet. Add a task above to automate or schedule it."}
+              <div class="glass-card rounded-xl p-8 text-center text-zinc-500 space-y-1">
+                <ListChecksIcon size={24} class="mx-auto text-zinc-600 mb-1" />
+                <p class="text-xs text-zinc-400">
+                  {searchQuery ? "No matching tasks found." : "No tasks or schedules created yet."}
+                </p>
+                <p class="text-[11px] text-zinc-500">
+                  Click "+ Create New Task" above to automate forms, recurring bills, or reminders.
+                </p>
               </div>
             ) : (
               pendingTasks.map((t) => (
                 <div
                   key={t.id}
-                  class={`border rounded-lg p-3 transition ${
+                  class={`glass-card rounded-xl p-3 transition-all duration-200 relative group shadow-subtle ${
                     t.status === "COMPLETED"
-                      ? "bg-slate-900/40 border-slate-800 opacity-60"
+                      ? "opacity-60 border-white/[0.04]"
                       : t.status === "DUE_SOON"
-                      ? "bg-amber-950/20 border-amber-600/40"
+                      ? "border-amber-500/40 bg-amber-950/10 shadow-[0_0_15px_-3px_rgba(245,158,11,0.15)]"
                       : t.schedule?.enabled
-                      ? "bg-indigo-950/20 border-indigo-700/50"
-                      : "bg-slate-800/40 border-slate-700"
+                      ? "border-indigo-500/30 bg-indigo-950/10"
+                      : "border-white/[0.07]"
                   }`}
                 >
-                  {/* Task Card Header */}
-                  <div class="flex items-start justify-between gap-2 mb-1.5">
+                  {/* Card Header Row */}
+                  <div class="flex items-start justify-between gap-2 mb-2">
                     <div class="flex items-center gap-2 min-w-0">
                       <input
                         type="checkbox"
                         checked={t.status === "COMPLETED"}
                         onChange={() => handleToggleTaskStatus(t)}
-                        class="rounded bg-slate-900 border-slate-700 text-indigo-600"
+                        class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
                       />
                       <span
-                        class={`text-xs font-medium truncate ${
-                          t.status === "COMPLETED" ? "line-through text-slate-500" : "text-slate-200"
+                        class={`text-xs font-semibold truncate ${
+                          t.status === "COMPLETED" ? "line-through text-zinc-500" : "text-zinc-100"
                         }`}
                       >
                         {t.title}
                       </span>
                     </div>
 
+                    {/* Action Toolbar */}
                     <div class="flex items-center gap-1 shrink-0">
                       {t.status !== "COMPLETED" && (
                         <button
                           onClick={() => handleExecutePendingTask(t)}
-                          class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium px-2 py-0.5 rounded transition inline-flex items-center gap-1"
-                          title="Execute now"
+                          class="shimmer-btn text-white text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-sm active:scale-95"
+                          title="Execute action with Agent"
                         >
-                          <PlayIcon size={10} />
-                          Execute
+                          <PlayIcon size={9} class="fill-current" />
+                          <span>Run</span>
                         </button>
                       )}
                       <button
                         onClick={() => handleOpenEditTask(t)}
-                        class="text-slate-400 hover:text-indigo-300 text-xs p-1"
+                        class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
                         title="Edit Task & Schedule"
                       >
                         <PencilSimpleIcon size={12} />
                       </button>
                       <button
                         onClick={() => handleCloneTask(t.id)}
-                        class="text-slate-400 hover:text-indigo-300 text-xs p-1"
+                        class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
                         title="Duplicate Task"
                       >
                         <CopyIcon size={12} />
                       </button>
                       <button
                         onClick={() => handleDeletePendingTask(t.id)}
-                        class="text-slate-500 hover:text-rose-400 text-xs p-1"
+                        class="text-zinc-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition"
                         title="Delete Task"
                       >
-                        <TrashIcon size={13} />
+                        <TrashIcon size={12} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Badges & Meta Row */}
+                  {/* Badges Row */}
                   <div class="flex flex-wrap items-center gap-1.5 text-[10px] mb-2">
                     {/* Priority Badge */}
                     <span
-                      class={`px-1.5 py-0.5 rounded font-bold uppercase text-[9px] ${
+                      class={`px-1.5 py-0.2 rounded font-bold uppercase text-[9px] border ${
                         t.priority === "HIGH"
-                          ? "bg-rose-950 text-rose-300 border border-rose-800"
+                          ? "bg-rose-950/40 text-rose-300 border-rose-800/60"
                           : t.priority === "LOW"
-                          ? "bg-slate-800 text-slate-400 border border-slate-700"
-                          : "bg-amber-950 text-amber-300 border border-amber-800"
+                          ? "bg-zinc-800 text-zinc-400 border-zinc-700"
+                          : "bg-amber-950/40 text-amber-300 border-amber-800/60"
                       }`}
                     >
                       {t.priority}
@@ -1493,11 +1718,11 @@ export function App() {
 
                     {/* Schedule Badge */}
                     {t.schedule && t.schedule.enabled && (
-                      <span class="bg-indigo-950 text-indigo-300 border border-indigo-700 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                      <span class="bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.2 rounded inline-flex items-center gap-1 font-medium">
                         {t.schedule.autoExecute ? (
-                          <LightningIcon size={11} class="text-amber-400 shrink-0" />
+                          <LightningIcon size={10} class="text-amber-400 shrink-0" />
                         ) : (
-                          <ClockIcon size={11} class="text-indigo-400 shrink-0" />
+                          <ClockIcon size={10} class="text-indigo-400 shrink-0" />
                         )}
                         <span>{formatScheduleText(t)}</span>
                       </span>
@@ -1505,57 +1730,57 @@ export function App() {
 
                     {/* Next Run Time */}
                     {t.schedule?.nextRunAt && (
-                      <span class="text-indigo-300/90 text-[10px]">
-                        Next: {new Date(t.schedule.nextRunAt).toLocaleString()}
+                      <span class="text-indigo-300/80 text-[10px] font-mono">
+                        Next: {new Date(t.schedule.nextRunAt).toLocaleDateString([], { month: "short", day: "numeric" })} {new Date(t.schedule.nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     )}
 
                     {/* Due Date */}
                     {t.dueDate && (
-                      <span class="text-slate-400 inline-flex items-center gap-1">
+                      <span class="text-zinc-400 inline-flex items-center gap-1">
                         <ClockIcon size={10} />
-                        Due: <strong class={t.status === "DUE_SOON" ? "text-amber-400" : "text-slate-300"}>{new Date(t.dueDate).toLocaleDateString()}</strong>
+                        Due: <strong class={t.status === "DUE_SOON" ? "text-amber-400" : "text-zinc-300"}>{new Date(t.dueDate).toLocaleDateString()}</strong>
                       </span>
                     )}
                   </div>
 
-                  {/* Biller / Form Details Summary */}
+                  {/* Profile / Target Details Summary */}
                   {t.billerInfo && (
-                    <div class="bg-indigo-950/40 border border-indigo-900/50 rounded p-2 mb-1.5 text-[11px] space-y-1.5">
+                    <div class="bg-zinc-950/60 border border-white/[0.05] rounded-lg p-2 mb-2 text-[11px] space-y-1">
                       <div class="flex items-center justify-between text-indigo-300 font-medium">
-                        <span class="inline-flex items-center gap-1">
-                          <BuildingsIcon size={12} />
+                        <span class="inline-flex items-center gap-1 truncate">
+                          <BuildingsIcon size={11} class="text-indigo-400 shrink-0" />
                           {t.billerInfo.providerName || t.billerInfo.billType}
                         </span>
                         {t.billerInfo.consumerNumber && (
-                          <span class="text-[10px] text-slate-400 font-mono">#{t.billerInfo.consumerNumber}</span>
+                          <span class="text-[10px] text-zinc-400 font-mono">#{t.billerInfo.consumerNumber}</span>
                         )}
                       </div>
                       {t.billerInfo.portalUrl && (
                         <div class="truncate text-[10px] text-indigo-400 flex items-center gap-1">
-                          <LinkSimpleIcon size={11} />
+                          <LinkSimpleIcon size={10} class="shrink-0" />
                           <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline truncate">
                             {t.billerInfo.portalUrl}
                           </a>
                         </div>
                       )}
                       {(t.billerInfo.customerName || t.billerInfo.firstName || t.billerInfo.lastName || t.billerInfo.phoneNumber || t.billerInfo.emailAddress) && (
-                        <div class="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-slate-300 pt-1 border-t border-indigo-900/40">
+                        <div class="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-zinc-400 pt-1 border-t border-white/[0.04]">
                           {(t.billerInfo.firstName || t.billerInfo.lastName || t.billerInfo.customerName) && (
-                            <span class="inline-flex items-center gap-1 text-slate-200">
-                              <UserIcon size={11} class="text-indigo-400" />
+                            <span class="inline-flex items-center gap-1 text-zinc-200">
+                              <UserIcon size={10} class="text-indigo-400" />
                               {[t.billerInfo.firstName, t.billerInfo.lastName].filter(Boolean).join(" ") || t.billerInfo.customerName}
                             </span>
                           )}
                           {t.billerInfo.phoneNumber && (
-                            <span class="inline-flex items-center gap-1 text-slate-300">
-                              <PhoneIcon size={11} class="text-indigo-400" />
+                            <span class="inline-flex items-center gap-1 text-zinc-300">
+                              <PhoneIcon size={10} class="text-indigo-400" />
                               {t.billerInfo.phoneNumber}
                             </span>
                           )}
                           {t.billerInfo.emailAddress && (
-                            <span class="inline-flex items-center gap-1 text-slate-300 truncate max-w-[140px]">
-                              <EnvelopeSimpleIcon size={11} class="text-indigo-400" />
+                            <span class="inline-flex items-center gap-1 text-zinc-300 truncate max-w-[130px]">
+                              <EnvelopeSimpleIcon size={10} class="text-indigo-400" />
                               {t.billerInfo.emailAddress}
                             </span>
                           )}
@@ -1564,11 +1789,11 @@ export function App() {
                     </div>
                   )}
 
-                  {/* Notes / Context */}
-                  <div class="bg-slate-900/60 border border-slate-800/80 rounded p-2 text-xs mb-1.5">
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
-                        <TagIcon size={11} />
+                  {/* Notes Block */}
+                  <div class="bg-zinc-950/40 border border-white/[0.04] rounded-lg p-2 text-xs mb-1.5">
+                    <div class="flex items-center justify-between mb-0.5">
+                      <span class="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                        <TagIcon size={10} />
                         Notes & Context
                       </span>
                       {editingNotesId !== t.id && (
@@ -1577,64 +1802,64 @@ export function App() {
                             setEditingNotesId(t.id);
                             setCurrentNoteText(t.notes || "");
                           }}
-                          class="text-[10px] text-slate-400 hover:text-indigo-300 inline-flex items-center gap-0.5"
+                          class="text-[9px] text-zinc-400 hover:text-indigo-300 inline-flex items-center gap-0.5 transition"
                         >
-                          <PencilSimpleIcon size={11} />
+                          <PencilSimpleIcon size={10} />
                           Edit
                         </button>
                       )}
                     </div>
 
                     {editingNotesId === t.id ? (
-                      <div class="space-y-1.5">
+                      <div class="space-y-1.5 mt-1">
                         <textarea
                           value={currentNoteText}
                           onInput={(e) => setCurrentNoteText((e.target as HTMLTextAreaElement).value)}
                           rows={2}
-                          class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+                          class="w-full glass-input rounded-md p-1.5 text-xs text-zinc-200 resize-none leading-relaxed"
                         />
                         <div class="flex justify-end gap-1.5">
                           <button
                             onClick={() => setEditingNotesId(null)}
-                            class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded"
+                            class="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={() => handleSaveNotes(t.id)}
-                            class="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-medium"
+                            class="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-md font-medium"
                           >
                             Save Note
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <p class="text-[11px] text-slate-400 italic">
+                      <p class="text-[11px] text-zinc-400 italic">
                         {t.notes || "No notes attached."}
                       </p>
                     )}
                   </div>
 
-                  {/* Execution Run History Accordion */}
+                  {/* Run History Accordion */}
                   {Array.isArray(t.executionHistory) && t.executionHistory.length > 0 && (
-                    <div class="pt-1 border-t border-slate-800/60">
+                    <div class="pt-1 border-t border-white/[0.04]">
                       <button
                         onClick={() =>
                           setExpandedHistoryTaskId(expandedHistoryTaskId === t.id ? null : t.id)
                         }
-                        class="w-full text-left text-[10px] text-slate-400 hover:text-slate-200 flex items-center justify-between py-0.5"
+                        class="w-full text-left text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center justify-between py-0.5 transition"
                       >
                         <span class="inline-flex items-center gap-1 font-medium">
-                          <ClockIcon size={11} />
-                          Run History ({t.executionHistory.length} runs)
+                          <ClockIcon size={10} />
+                          Run History ({t.executionHistory.length} executions)
                         </span>
-                        {expandedHistoryTaskId === t.id ? <CaretUpIcon size={11} /> : <CaretDownIcon size={11} />}
+                        {expandedHistoryTaskId === t.id ? <CaretUpIcon size={10} /> : <CaretDownIcon size={10} />}
                       </button>
 
                       {expandedHistoryTaskId === t.id && (
-                        <div class="mt-1.5 space-y-1 pl-1 border-l-2 border-slate-700">
+                        <div class="mt-1.5 space-y-1 pl-1.5 border-l-2 border-indigo-500/40 animate-fade-in">
                           {t.executionHistory.map((run) => (
-                            <div key={run.id} class="text-[10px] bg-slate-950/60 p-1.5 rounded space-y-0.5">
+                            <div key={run.id} class="text-[10px] bg-zinc-950/80 p-2 rounded-md space-y-0.5 border border-white/[0.04]">
                               <div class="flex items-center justify-between">
                                 <span
                                   class={`font-bold ${
@@ -1642,15 +1867,15 @@ export function App() {
                                       ? "text-emerald-400"
                                       : run.status === "FAILED"
                                       ? "text-rose-400"
-                                      : "text-slate-400"
+                                      : "text-zinc-400"
                                   }`}
                                 >
-                                  {run.status === "SUCCESS" ? "✓ Succeeded" : run.status === "FAILED" ? "✕ Failed" : "Cancelled"}
+                                  {run.status === "SUCCESS" ? "Succeeded" : run.status === "FAILED" ? "Failed" : "Cancelled"}
                                 </span>
-                                <span class="text-slate-500">{new Date(run.runAt).toLocaleTimeString()}</span>
+                                <span class="text-zinc-500 font-mono">{new Date(run.runAt).toLocaleTimeString()}</span>
                               </div>
-                              <p class="text-slate-300 leading-tight">{run.summary || run.error}</p>
-                              <div class="text-[9px] text-slate-500 flex gap-2">
+                              <p class="text-zinc-300 leading-tight">{run.summary || run.error}</p>
+                              <div class="text-[9px] text-zinc-500 flex gap-2 pt-0.5">
                                 <span>Duration: {(run.durationMs / 1000).toFixed(1)}s</span>
                                 <span>Steps: {run.stepsCount}</span>
                               </div>
@@ -1669,45 +1894,45 @@ export function App() {
 
       {/* Full Task & Schedule Edit Modal Dialog */}
       {editingTask && (
-        <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 overflow-y-auto">
-          <div class="bg-slate-900 border border-indigo-700/60 rounded-xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden animate-in">
+        <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto animate-fade-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-indigo-500/30 animate-scale-in">
             {/* Modal Header */}
-            <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80">
-              <div class="flex items-center gap-2 text-indigo-300 font-semibold text-xs">
-                <PencilSimpleIcon size={16} />
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90">
+              <div class="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                <PencilSimpleIcon size={15} />
                 <span>Edit Task, Profile & Schedule</span>
               </div>
               <button
                 onClick={() => setEditingTask(null)}
-                class="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition"
+                class="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05] transition"
               >
-                <XIcon size={15} />
+                <XIcon size={14} />
               </button>
             </div>
 
-            {/* Modal Body - Scrollable Form */}
-            <div class="p-4 overflow-y-auto space-y-3.5 text-xs">
+            {/* Modal Body */}
+            <div class="p-4 overflow-y-auto space-y-3.5 text-xs bg-zinc-950/70">
               {/* Task Title */}
               <div>
-                <label class="text-[10px] text-slate-400 block mb-1 font-semibold uppercase tracking-wider">
+                <label class="text-[10px] text-zinc-400 block mb-1 font-semibold uppercase tracking-wider">
                   Task Title <span class="text-rose-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={editTitle}
                   onInput={(e) => setEditTitle((e.target as HTMLInputElement).value)}
-                  class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+                  class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-100 font-medium"
                 />
               </div>
 
               {/* Priority, Category & Due Date */}
               <div class="grid grid-cols-3 gap-2">
                 <div>
-                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Priority</label>
+                  <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Priority</label>
                   <select
                     value={editPriority}
                     onChange={(e) => setEditPriority((e.target as HTMLSelectElement).value as TaskPriority)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                   >
                     <option value="LOW">Low</option>
                     <option value="MEDIUM">Medium</option>
@@ -1716,11 +1941,11 @@ export function App() {
                 </div>
 
                 <div>
-                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Category</label>
+                  <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Category</label>
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory((e.target as HTMLSelectElement).value as TaskCategory)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                   >
                     <option value="GENERAL">General Web</option>
                     <option value="FORM_FILL">Form Autofill</option>
@@ -1736,31 +1961,31 @@ export function App() {
                 </div>
 
                 <div>
-                  <label class="text-[10px] text-slate-400 block mb-1 font-medium truncate">Due Date</label>
+                  <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Due Date</label>
                   <input
                     type="date"
                     value={editDueDate}
                     onInput={(e) => setEditDueDate((e.target as HTMLInputElement).value)}
-                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                   />
                 </div>
               </div>
 
               {/* Target Webpage / Portal URL */}
               <div>
-                <label class="text-[10px] text-slate-400 block mb-1 font-medium">Target URL / Portal Link</label>
+                <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Target URL / Portal Link</label>
                 <input
                   type="url"
                   placeholder="https://..."
                   value={editPortalUrl}
                   onInput={(e) => setEditPortalUrl((e.target as HTMLInputElement).value)}
-                  class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                 />
               </div>
 
               {/* User Profile & Form Details Group */}
-              <div class="bg-slate-950/70 border border-slate-800 rounded-lg p-3 space-y-2.5">
-                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
+              <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
+                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
                   <UserIcon size={13} />
                   <span>User Profile & Biller Info</span>
                 </div>
@@ -1768,23 +1993,23 @@ export function App() {
                 {/* First Name & Last Name (Separate inputs) */}
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">First Name</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">First Name</label>
                     <input
                       type="text"
                       placeholder="e.g. John"
                       value={editFirstName}
                       onInput={(e) => setEditFirstName((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Last Name</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Last Name</label>
                     <input
                       type="text"
                       placeholder="e.g. Doe"
                       value={editLastName}
                       onInput={(e) => setEditLastName((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                 </div>
@@ -1792,23 +2017,23 @@ export function App() {
                 {/* Phone & Email */}
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Phone Number</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Phone Number</label>
                     <input
                       type="tel"
                       placeholder="e.g. 8888989261"
                       value={editPhone}
                       onInput={(e) => setEditPhone((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Email Address</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Email Address</label>
                     <input
                       type="email"
                       placeholder="e.g. demo56@gmail.com"
                       value={editEmail}
                       onInput={(e) => setEditEmail((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                 </div>
@@ -1816,23 +2041,23 @@ export function App() {
                 {/* Site/Provider & Account No */}
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Site / Provider</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Site / Provider</label>
                     <input
                       type="text"
                       placeholder="e.g. Google Demo, CESC"
                       value={editProvider}
                       onInput={(e) => setEditProvider((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Account / Consumer ID</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Account / Consumer ID</label>
                     <input
                       type="text"
                       placeholder="e.g. 102938492"
                       value={editConsumerNo}
                       onInput={(e) => setEditConsumerNo((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                 </div>
@@ -1840,41 +2065,41 @@ export function App() {
                 {/* Subdivision & Custom Instructions */}
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Subdivision / Area</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Subdivision / Area</label>
                     <input
                       type="text"
                       placeholder="e.g. North Zone"
                       value={editSubdivision}
                       onInput={(e) => setEditSubdivision((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-slate-400 block mb-1 font-medium">Action Instructions</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Action Instructions</label>
                     <input
                       type="text"
                       placeholder="e.g. Fill form and submit"
                       value={editInstructions}
                       onInput={(e) => setEditInstructions((e.target as HTMLInputElement).value)}
-                      class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Schedule Configuration Group */}
-              <div class="bg-slate-950/70 border border-slate-800 rounded-lg p-3 space-y-2.5">
-                <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+              <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
+                <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
                   <div class="flex items-center gap-1.5 text-indigo-300 font-semibold text-[11px]">
                     <RepeatIcon size={13} />
                     <span>Scheduling & Auto-Execution</span>
                   </div>
-                  <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                  <label class="flex items-center gap-1.5 text-[11px] text-zinc-300 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={editScheduleEnabled}
                       onChange={(e) => setEditScheduleEnabled((e.target as HTMLInputElement).checked)}
-                      class="rounded bg-slate-950 border-slate-700 text-indigo-600"
+                      class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
                     />
                     <span>Enable Schedule</span>
                   </label>
@@ -1884,11 +2109,11 @@ export function App() {
                   <>
                     <div class="grid grid-cols-2 gap-2">
                       <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Frequency</label>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Frequency</label>
                         <select
                           value={editScheduleFreq}
                           onChange={(e) => setEditScheduleFreq((e.target as HTMLSelectElement).value as ScheduleFrequency)}
-                          class="w-full bg-slate-900 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                         >
                           <option value="ONCE">One-Time Run</option>
                           <option value="DAILY">Daily</option>
@@ -1898,37 +2123,37 @@ export function App() {
                         </select>
                       </div>
                       <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Trigger Time</label>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Trigger Time</label>
                         <input
                           type="time"
                           value={editScheduleTime}
                           onInput={(e) => setEditScheduleTime((e.target as HTMLInputElement).value)}
-                          class="w-full bg-slate-900 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                         />
                       </div>
                     </div>
 
                     {editScheduleFreq === "MONTHLY" && (
                       <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Day of Month (1 - 31)</label>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Day of Month (1 - 31)</label>
                         <input
                           type="number"
                           min={1}
                           max={31}
                           value={editScheduleDayOfMonth}
                           onInput={(e) => setEditScheduleDayOfMonth(Number((e.target as HTMLInputElement).value))}
-                          class="w-full bg-slate-900 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                         />
                       </div>
                     )}
 
                     {editScheduleFreq === "WEEKLY" && (
                       <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Day of Week</label>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Day of Week</label>
                         <select
                           value={editScheduleDayOfWeek}
                           onChange={(e) => setEditScheduleDayOfWeek(Number((e.target as HTMLSelectElement).value))}
-                          class="w-full bg-slate-900 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
                         >
                           <option value={1}>Monday</option>
                           <option value={2}>Tuesday</option>
@@ -1943,28 +2168,28 @@ export function App() {
 
                     {editScheduleFreq === "CUSTOM_DAYS" && (
                       <div>
-                        <label class="text-[10px] text-slate-400 block mb-1 font-medium">Repeat Every N Days</label>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Repeat Every N Days</label>
                         <input
                           type="number"
                           min={1}
                           max={365}
                           value={editScheduleIntervalDays}
                           onInput={(e) => setEditScheduleIntervalDays(Number((e.target as HTMLInputElement).value))}
-                          class="w-full bg-slate-900 border border-slate-700 rounded px-2 h-8 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
                         />
                       </div>
                     )}
 
-                    <div class="bg-indigo-950/40 p-2 rounded border border-indigo-900/50 flex items-center justify-between">
+                    <div class="bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-500/20 flex items-center justify-between">
                       <div class="flex flex-col">
                         <span class="text-[11px] font-semibold text-indigo-300">Auto-Execute with Agent</span>
-                        <span class="text-[10px] text-slate-400">Launch browser execution automatically</span>
+                        <span class="text-[10px] text-zinc-400">Launch browser execution automatically</span>
                       </div>
                       <input
                         type="checkbox"
                         checked={editScheduleAutoExecute}
                         onChange={(e) => setEditScheduleAutoExecute((e.target as HTMLInputElement).checked)}
-                        class="rounded bg-slate-950 border-slate-700 text-indigo-600"
+                        class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
                       />
                     </div>
                   </>
@@ -1973,32 +2198,31 @@ export function App() {
 
               {/* Notes */}
               <div>
-                <label class="text-[10px] text-slate-400 block mb-1 font-medium">Notes & Context</label>
+                <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Notes & Context</label>
                 <textarea
                   rows={2}
                   value={editNotes}
                   onInput={(e) => setEditNotes((e.target as HTMLTextAreaElement).value)}
                   placeholder="Additional instructions or notes..."
-                  class="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+                  class="w-full glass-input rounded-lg p-2 text-xs text-zinc-200 resize-none leading-relaxed"
                 />
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-800 bg-slate-950/80">
+            <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-white/[0.08] bg-zinc-950/90">
               <button
                 onClick={() => setEditingTask(null)}
-                class="px-3 py-1.5 rounded text-xs bg-slate-800 text-slate-300 hover:bg-slate-700 transition"
+                class="px-3 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEditTask}
                 disabled={!editTitle.trim()}
-                class="px-4 py-1.5 rounded text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-semibold transition inline-flex items-center gap-1.5 shadow-sm"
+                class="shimmer-btn px-4 py-1.5 rounded-lg text-xs text-white font-semibold shadow-glow-sm active:scale-95 transition"
               >
-                <CheckCircleIcon size={13} />
-                <span>Save Changes</span>
+                Save Changes
               </button>
             </div>
           </div>
@@ -2007,5 +2231,3 @@ export function App() {
     </div>
   );
 }
-
-
