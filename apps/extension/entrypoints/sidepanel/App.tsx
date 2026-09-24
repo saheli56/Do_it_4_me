@@ -24,6 +24,13 @@ export function App() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskNotes, setNewTaskNotes] = useState("");
+  const [showBillerDetails, setShowBillerDetails] = useState(false);
+  const [billerProvider, setBillerProvider] = useState("");
+  const [billerType, setBillerType] = useState<"ELECTRICITY" | "WATER" | "GAS" | "INTERNET" | "MOBILE" | "CREDIT_CARD" | "OTHER">("ELECTRICITY");
+  const [billerConsumerNo, setBillerConsumerNo] = useState("");
+  const [billerSubdivision, setBillerSubdivision] = useState("");
+  const [billerPortalUrl, setBillerPortalUrl] = useState("");
+  const [billerInstructions, setBillerInstructions] = useState("");
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [currentNoteText, setCurrentNoteText] = useState("");
 
@@ -206,6 +213,17 @@ export function App() {
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const billerInfo = showBillerDetails
+        ? {
+            providerName: billerProvider.trim() || undefined,
+            billType: billerType,
+            consumerNumber: billerConsumerNo.trim() || undefined,
+            subdivision: billerSubdivision.trim() || undefined,
+            portalUrl: billerPortalUrl.trim() || undefined,
+            additionalInstructions: billerInstructions.trim() || undefined
+          }
+        : undefined;
+
       await fetch("http://127.0.0.1:3001/pending-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,17 +231,52 @@ export function App() {
           title: newTaskTitle.trim(),
           dueDate: newTaskDueDate || undefined,
           notes: newTaskNotes.trim() || undefined,
-          targetUrl: tab?.url || undefined
+          targetUrl: billerPortalUrl.trim() || tab?.url || undefined,
+          billerInfo
         })
       });
 
       setNewTaskTitle("");
       setNewTaskDueDate("");
       setNewTaskNotes("");
+      setBillerProvider("");
+      setBillerConsumerNo("");
+      setBillerSubdivision("");
+      setBillerPortalUrl("");
+      setBillerInstructions("");
+      setShowBillerDetails(false);
       fetchPendingTasks();
     } catch {
       // Ignored
     }
+  };
+
+  const handleExecutePendingTask = async (task: PendingTaskItem) => {
+    let formulatedGoal = task.title;
+    if (task.billerInfo) {
+      const parts: string[] = [];
+      if (task.billerInfo.providerName) parts.push(`Provider: ${task.billerInfo.providerName}`);
+      if (task.billerInfo.billType) parts.push(`Type: ${task.billerInfo.billType}`);
+      if (task.billerInfo.consumerNumber) parts.push(`Consumer/Account No: ${task.billerInfo.consumerNumber}`);
+      if (task.billerInfo.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
+      if (task.billerInfo.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
+      if (task.notes) parts.push(`Notes: ${task.notes}`);
+
+      formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()} bill for ${
+        task.billerInfo.providerName || task.title
+      }. Details: ${parts.join(" | ")}. Stop and request user confirmation before final payment/card submission.`;
+    }
+
+    if (task.billerInfo?.portalUrl) {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab?.id) {
+        chrome.tabs.update(tab.id, { url: task.billerInfo.portalUrl });
+      }
+    }
+
+    setActiveTab("EXECUTE");
+    setGoal(formulatedGoal);
+    handleStartTask(formulatedGoal);
   };
 
   const handleSaveNotes = async (id: string) => {
@@ -307,7 +360,7 @@ export function App() {
                 <div key={t.id} class="flex items-center justify-between">
                   <span>• {t.title}</span>
                   <button
-                    onClick={() => handleStartTask(t.title)}
+                    onClick={() => handleExecutePendingTask(t)}
                     class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium ml-2"
                   >
                     Execute Now
@@ -328,7 +381,7 @@ export function App() {
             <div class="flex gap-2">
               <input
                 type="text"
-                placeholder="e.g. Return these shoes or Cancel subscription"
+                placeholder="e.g. Return these shoes or Pay electricity bill"
                 value={goal}
                 onInput={(e) => setGoal((e.target as HTMLInputElement).value)}
                 disabled={taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED"}
@@ -398,12 +451,12 @@ export function App() {
             <h3 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">Add Pending Task</h3>
             <input
               type="text"
-              placeholder="Task goal (e.g. Return Zara jacket, Cancel gym membership)"
+              placeholder="Task name (e.g. Pay Electricity Bill, Internet Subscription)"
               value={newTaskTitle}
               onInput={(e) => setNewTaskTitle((e.target as HTMLInputElement).value)}
               class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
             />
-            <div class="flex gap-2">
+            <div class="flex gap-2 items-center">
               <input
                 type="date"
                 value={newTaskDueDate}
@@ -411,20 +464,114 @@ export function App() {
                 class="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
               />
               <button
-                onClick={handleCreatePendingTask}
-                disabled={!newTaskTitle.trim()}
-                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold px-3 py-1 rounded transition"
+                type="button"
+                onClick={() => setShowBillerDetails(!showBillerDetails)}
+                class={`text-xs px-2.5 py-1 rounded border transition ${
+                  showBillerDetails
+                    ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
+                    : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
+                }`}
               >
-                Save Task
+                💳 {showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}
               </button>
             </div>
+
+            {showBillerDetails && (
+              <div class="bg-slate-900/90 border border-indigo-900/60 rounded p-2.5 space-y-2 text-xs">
+                <div class="text-[11px] font-semibold text-indigo-300">
+                  🏛 Bill Payment Portal & Account Details
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Bill Type</label>
+                    <select
+                      value={billerType}
+                      onChange={(e) => setBillerType((e.target as HTMLSelectElement).value as any)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="ELECTRICITY">⚡ Electricity</option>
+                      <option value="WATER">💧 Water</option>
+                      <option value="GAS">🔥 Gas</option>
+                      <option value="INTERNET">🌐 Internet</option>
+                      <option value="MOBILE">📱 Mobile</option>
+                      <option value="CREDIT_CARD">💳 Credit Card</option>
+                      <option value="OTHER">📄 Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Provider / Biller</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Tata Power, BESCOM"
+                      value={billerProvider}
+                      onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-[10px] text-slate-400 block mb-0.5">Payment Portal / Website URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://tatapower.com/quickpay"
+                    value={billerPortalUrl}
+                    onInput={(e) => setBillerPortalUrl((e.target as HTMLInputElement).value)}
+                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Consumer / Account No.</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 102938492"
+                      value={billerConsumerNo}
+                      onInput={(e) => setBillerConsumerNo((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-slate-400 block mb-0.5">Subdivision / Circle</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. North Zone"
+                      value={billerSubdivision}
+                      onInput={(e) => setBillerSubdivision((e.target as HTMLInputElement).value)}
+                      class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="text-[10px] text-slate-400 block mb-0.5">Payment Instructions</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Stop before OTP or CVV entry"
+                    value={billerInstructions}
+                    onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
+                    class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
             <textarea
-              placeholder="Notes, order IDs, or special instructions..."
+              placeholder="Notes, reminders, order IDs, or general instructions..."
               value={newTaskNotes}
               onInput={(e) => setNewTaskNotes((e.target as HTMLTextAreaElement).value)}
               rows={2}
               class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 resize-none"
             />
+
+            <button
+              onClick={handleCreatePendingTask}
+              disabled={!newTaskTitle.trim()}
+              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition"
+            >
+              ➕ Save Pending Task
+            </button>
           </div>
 
           <div class="space-y-2.5">
@@ -464,7 +611,7 @@ export function App() {
                     <div class="flex items-center gap-1.5">
                       {t.status !== "COMPLETED" && (
                         <button
-                          onClick={() => handleStartTask(t.title)}
+                          onClick={() => handleExecutePendingTask(t)}
                           class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium px-2 py-0.5 rounded transition"
                         >
                           Execute
@@ -485,6 +632,32 @@ export function App() {
                       <span class={t.status === "DUE_SOON" ? "text-amber-400 font-bold" : "text-slate-300"}>
                         {new Date(t.dueDate).toLocaleDateString()}
                       </span>
+                    </div>
+                  )}
+
+                  {t.billerInfo && (
+                    <div class="bg-indigo-950/40 border border-indigo-900/50 rounded p-2 mb-1.5 text-[11px] space-y-1">
+                      <div class="flex items-center justify-between text-indigo-300 font-medium">
+                        <span>🏛 {t.billerInfo.providerName || t.billerInfo.billType}</span>
+                        {t.billerInfo.consumerNumber && (
+                          <span class="text-[10px] text-slate-400 font-mono">#{t.billerInfo.consumerNumber}</span>
+                        )}
+                      </div>
+                      {t.billerInfo.portalUrl && (
+                        <div class="truncate text-[10px] text-indigo-400">
+                          🔗 <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline">{t.billerInfo.portalUrl}</a>
+                        </div>
+                      )}
+                      {t.billerInfo.subdivision && (
+                        <div class="text-[10px] text-slate-400">
+                          Circle/Subdivision: {t.billerInfo.subdivision}
+                        </div>
+                      )}
+                      {t.billerInfo.additionalInstructions && (
+                        <div class="text-[10px] text-slate-400 italic">
+                          ℹ️ {t.billerInfo.additionalInstructions}
+                        </div>
+                      )}
                     </div>
                   )}
 

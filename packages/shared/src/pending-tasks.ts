@@ -11,15 +11,27 @@ export const PendingTaskStatusSchema = z.enum([
 
 export type PendingTaskStatus = z.infer<typeof PendingTaskStatusSchema>;
 
+export const BillerInfoSchema = z.object({
+  providerName: z.string().optional(),
+  billType: z.enum(["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "OTHER"]).default("OTHER"),
+  consumerNumber: z.string().optional(),
+  subdivision: z.string().optional(),
+  portalUrl: z.string().optional(),
+  additionalInstructions: z.string().optional()
+});
+
+export type BillerInfo = z.infer<typeof BillerInfoSchema>;
+
 export const PendingTaskItemSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string().optional(),
   dueDate: z.string().optional(), // ISO date string e.g. "2026-09-30T10:00:00Z"
-  targetUrl: z.string().url().optional(),
+  targetUrl: z.string().optional(),
   status: PendingTaskStatusSchema.default("PENDING"),
   requiresSensitiveApproval: z.boolean().default(true),
   notes: z.string().optional(),
+  billerInfo: BillerInfoSchema.optional(),
   createdAt: z.number(),
   completedAt: z.number().optional()
 });
@@ -30,8 +42,9 @@ export const CreatePendingTaskSchema = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
   dueDate: z.string().optional(),
-  targetUrl: z.string().url().optional(),
-  notes: z.string().optional()
+  targetUrl: z.string().optional(),
+  notes: z.string().optional(),
+  billerInfo: BillerInfoSchema.optional()
 });
 
 export type CreatePendingTask = z.infer<typeof CreatePendingTaskSchema>;

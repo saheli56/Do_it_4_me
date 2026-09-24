@@ -19,6 +19,7 @@ export class PendingTaskManager {
       status: "PENDING",
       requiresSensitiveApproval: true,
       notes: input.notes,
+      billerInfo: input.billerInfo,
       createdAt: Date.now()
     };
 
