@@ -30,7 +30,11 @@ export function findTargetElement(locator: ElementLocator, doc: Document = docum
   return null;
 }
 
-export function highlightElement(element: Element, durationMs = 100): Promise<void> {
+export function highlightElement(
+  element: Element,
+  label = "DIFM Action",
+  durationMs = 450
+): Promise<void> {
   return new Promise((resolve) => {
     if (typeof element.getBoundingClientRect !== "function") {
       resolve();
@@ -38,26 +42,58 @@ export function highlightElement(element: Element, durationMs = 100): Promise<vo
     }
 
     try {
+      // Smoothly bring element into viewport center if needed
+      if (typeof element.scrollIntoView === "function") {
+        try {
+          element.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+        } catch {}
+      }
+
       const doc = element.ownerDocument || document;
       const rect = element.getBoundingClientRect();
+
+      // Highlight Container Box
       const overlay = doc.createElement("div");
       overlay.setAttribute("data-difm-highlight", "true");
       overlay.style.position = "fixed";
-      overlay.style.top = `${rect.top}px`;
-      overlay.style.left = `${rect.left}px`;
-      overlay.style.width = `${rect.width}px`;
-      overlay.style.height = `${rect.height}px`;
+      overlay.style.top = `${Math.max(0, rect.top - 4)}px`;
+      overlay.style.left = `${Math.max(0, rect.left - 4)}px`;
+      overlay.style.width = `${rect.width + 8}px`;
+      overlay.style.height = `${rect.height + 8}px`;
       overlay.style.border = "2px solid #6366f1";
-      overlay.style.backgroundColor = "rgba(99, 102, 241, 0.15)";
-      overlay.style.borderRadius = "4px";
+      overlay.style.backgroundColor = "rgba(99, 102, 241, 0.16)";
+      overlay.style.boxShadow = "0 0 16px rgba(99, 102, 241, 0.65)";
+      overlay.style.borderRadius = "6px";
       overlay.style.pointerEvents = "none";
       overlay.style.zIndex = "2147483647";
+      overlay.style.transition = "all 0.2s ease-out";
 
+      // Floating Live Action Pill Badge
+      const badge = doc.createElement("div");
+      badge.style.position = "absolute";
+      badge.style.top = rect.top > 32 ? "-26px" : `${rect.height + 6}px`;
+      badge.style.left = "0px";
+      badge.style.backgroundColor = "#4f46e5";
+      badge.style.color = "#ffffff";
+      badge.style.fontSize = "11px";
+      badge.style.fontFamily = "system-ui, -apple-system, sans-serif";
+      badge.style.fontWeight = "600";
+      badge.style.padding = "2px 8px";
+      badge.style.borderRadius = "4px";
+      badge.style.boxShadow = "0 2px 6px rgba(0,0,0,0.3)";
+      badge.style.whiteSpace = "nowrap";
+      badge.style.pointerEvents = "none";
+      badge.textContent = `⚡ ${label}`;
+
+      overlay.appendChild(badge);
       doc.body.appendChild(overlay);
 
       setTimeout(() => {
-        overlay.remove();
-        resolve();
+        overlay.style.opacity = "0";
+        setTimeout(() => {
+          overlay.remove();
+          resolve();
+        }, 150);
       }, durationMs);
     } catch {
       resolve();
@@ -65,10 +101,10 @@ export function highlightElement(element: Element, durationMs = 100): Promise<vo
   });
 }
 
-export function waitForSettlement(doc: Document = document, timeoutMs = 200): Promise<void> {
+export function waitForSettlement(doc: Document = document, timeoutMs = 250): Promise<void> {
   return new Promise((resolve) => {
     if (typeof MutationObserver === "undefined" || !doc?.body) {
-      setTimeout(resolve, 20);
+      setTimeout(resolve, 30);
       return;
     }
 
@@ -80,7 +116,7 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 200): Pr
         timeoutId = setTimeout(() => {
           observer.disconnect();
           resolve();
-        }, 50);
+        }, 60);
       });
 
       observer.observe(doc.body, {
@@ -94,7 +130,7 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 200): Pr
         resolve();
       }, timeoutMs);
     } catch {
-      setTimeout(resolve, 20);
+      setTimeout(resolve, 30);
     }
   });
 }
@@ -110,7 +146,7 @@ export async function executeAgentAction(
         if (!el) {
           return { success: false, error: `Target element not found: ${action.target.name || action.target.selector}` };
         }
-        await highlightElement(el);
+        await highlightElement(el, `Clicking "${action.target.name || 'target'}"`);
         if ("focus" in el && typeof (el as { focus: () => void }).focus === "function") {
           (el as { focus: () => void }).focus();
         }
@@ -128,7 +164,7 @@ export async function executeAgentAction(
         if (!el) {
           return { success: false, error: `Target input not found: ${action.target.name || action.target.selector}` };
         }
-        await highlightElement(el);
+        await highlightElement(el, `Typing into ${action.target.name || 'input'}`);
         const inputEl = el as HTMLInputElement | HTMLTextAreaElement;
         if ("focus" in inputEl && typeof inputEl.focus === "function") {
           inputEl.focus();
@@ -158,7 +194,7 @@ export async function executeAgentAction(
         if (!el || el.tagName !== "SELECT") {
           return { success: false, error: `Select element not found: ${action.target.name || action.target.selector}` };
         }
-        await highlightElement(el);
+        await highlightElement(el, `Selecting "${action.value}"`);
         const selectEl = el as HTMLSelectElement;
         selectEl.value = action.value;
         selectEl.dispatchEvent(new Event("change", { bubbles: true }));

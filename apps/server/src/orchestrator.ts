@@ -1,7 +1,8 @@
 import type {
   AgentAction,
   PageObservation,
-  TaskState
+  TaskState,
+  SecurityChallenge
 } from "@difm/shared";
 import { isValidStateTransition, evaluateRiskTier } from "@difm/shared";
 import type { PlannerService } from "./planner.js";
@@ -14,6 +15,7 @@ export interface TaskSession {
   history: string[];
   lastObservation?: PageObservation;
   pendingApprovalAction?: AgentAction;
+  activeChallenge?: SecurityChallenge;
 }
 
 export class TaskOrchestrator {
@@ -53,13 +55,32 @@ export class TaskOrchestrator {
   async handleObservation(
     taskId: string,
     observation: PageObservation
-  ): Promise<{ action: AgentAction; requiresApproval: boolean; summary?: string }> {
+  ): Promise<{
+    action?: AgentAction;
+    requiresApproval: boolean;
+    summary?: string;
+    isSecurityChallenge?: boolean;
+    challenge?: SecurityChallenge;
+  }> {
     const session = this.sessions.get(taskId);
     if (!session) {
       throw new Error(`Task ${taskId} not found`);
     }
 
     session.lastObservation = observation;
+
+    // Check for security challenge (Cloudflare / Captcha / OTP)
+    if (observation.securityChallenge) {
+      session.activeChallenge = observation.securityChallenge;
+      this.transitionState(session, "HUMAN_TAKEOVER");
+      session.history.push(`[Security Check]: ${observation.securityChallenge.description} detected. Pausing for human takeover.`);
+      return {
+        isSecurityChallenge: true,
+        challenge: observation.securityChallenge,
+        requiresApproval: false
+      };
+    }
+
     this.transitionState(session, "PLANNING");
 
     const plannedAction = await this.planner.planNextStep(
@@ -147,5 +168,15 @@ export class TaskOrchestrator {
       session.history.push("Task cancelled by user refusal.");
       return null;
     }
+  }
+
+  resolveSecurityChallenge(taskId: string): void {
+    const session = this.sessions.get(taskId);
+    if (!session || session.state !== "HUMAN_TAKEOVER") {
+      return;
+    }
+    session.activeChallenge = undefined;
+    this.transitionState(session, "PLANNING");
+    session.history.push("Security challenge solved by user. Resuming automation.");
   }
 }

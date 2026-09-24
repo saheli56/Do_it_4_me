@@ -106,7 +106,14 @@ export async function createServer() {
               msg.observation
             );
 
-            if (result.requiresApproval) {
+            if (result.isSecurityChallenge && result.challenge) {
+              const serverMsg: ServerMessage = {
+                type: "SECURITY_CHALLENGE_DETECTED",
+                taskId: msg.taskId,
+                challenge: result.challenge
+              };
+              socket.send(JSON.stringify(serverMsg));
+            } else if (result.requiresApproval && result.action) {
               const serverMsg: ServerMessage = {
                 type: "REQUEST_APPROVAL",
                 taskId: msg.taskId,
@@ -116,7 +123,7 @@ export async function createServer() {
                 targetText: result.action.type
               };
               socket.send(JSON.stringify(serverMsg));
-            } else {
+            } else if (result.action) {
               const serverMsg: ServerMessage = {
                 type: "EXECUTE_ACTION",
                 taskId: msg.taskId,
@@ -125,6 +132,16 @@ export async function createServer() {
               };
               socket.send(JSON.stringify(serverMsg));
             }
+          } else if (msg.type === "SECURITY_CHALLENGE_RESOLVED") {
+            orchestrator.resolveSecurityChallenge(msg.taskId);
+            const serverMsg: ServerMessage = {
+              type: "TASK_STATE_CHANGED",
+              taskId: msg.taskId,
+              state: "PLANNING",
+              stepIndex: 0,
+              statusMessage: "Security challenge resolved. Resuming automated workflow..."
+            };
+            socket.send(JSON.stringify(serverMsg));
           } else if (msg.type === "USER_APPROVAL_RESPONSE") {
             const approvedAction = orchestrator.handleApprovalDecision(
               msg.taskId,

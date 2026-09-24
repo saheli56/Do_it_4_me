@@ -4,7 +4,8 @@ import type {
   ServerMessage,
   ExtensionMessage,
   PendingTaskItem,
-  PageObservation
+  PageObservation,
+  SecurityChallenge
 } from "@difm/shared";
 import {
   LightningIcon,
@@ -26,7 +27,8 @@ import {
   InfoIcon,
   ListChecksIcon,
   SparkleIcon,
-  TrashIcon
+  TrashIcon,
+  ShieldCheckIcon
 } from "../../src/components/icons";
 
 export function App() {
@@ -35,6 +37,7 @@ export function App() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskState, setTaskState] = useState<TaskState | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [securityChallenge, setSecurityChallenge] = useState<SecurityChallenge | null>(null);
   const [approvalPrompt, setApprovalPrompt] = useState<{
     summary: string;
     consequences: string;
@@ -111,7 +114,11 @@ export function App() {
       try {
         const msg = JSON.parse(event.data) as ServerMessage;
 
-        if (msg.type === "REQUEST_APPROVAL") {
+        if (msg.type === "SECURITY_CHALLENGE_DETECTED") {
+          setTaskState("HUMAN_TAKEOVER");
+          setSecurityChallenge(msg.challenge);
+          setLogs((prev) => [...prev, `[Verification Needed]: ${msg.challenge.description}`]);
+        } else if (msg.type === "REQUEST_APPROVAL") {
           setTaskState("WAITING_FOR_APPROVAL");
           setApprovalPrompt({
             summary: msg.summary,
@@ -125,6 +132,7 @@ export function App() {
           }).catch(() => {});
         } else if (msg.type === "EXECUTE_ACTION") {
           setApprovalPrompt(null);
+          setSecurityChallenge(null);
           setTaskState("EXECUTING");
           setLogs((prev) => [...prev, `Executing: [${msg.action.type}]`]);
 
@@ -332,6 +340,40 @@ export function App() {
     sendExtensionMessage(approvalMsg);
     setApprovalPrompt(null);
     setLogs((prev) => [...prev, approved ? "Action approved." : "Action rejected."]);
+  };
+
+  const handleResumeAfterChallenge = async () => {
+    if (!taskId) return;
+    setSecurityChallenge(null);
+    setTaskState("PLANNING");
+    setLogs((prev) => [...prev, "Security challenge resolved. Resuming automated workflow..."]);
+
+    const resumeMsg: ExtensionMessage = {
+      type: "SECURITY_CHALLENGE_RESOLVED",
+      taskId
+    };
+    sendExtensionMessage(resumeMsg);
+
+    let activeTabId = executionTabIdRef.current;
+    if (!activeTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      activeTabId = tab?.id || null;
+    }
+
+    if (activeTabId) {
+      setTimeout(() => {
+        chrome.tabs.sendMessage(activeTabId!, { type: "CAPTURE_OBSERVATION" }, (obsRes) => {
+          if (obsRes?.observation) {
+            const nextObsMsg: ExtensionMessage = {
+              type: "OBSERVATION_CAPTURED",
+              taskId,
+              observation: obsRes.observation
+            };
+            sendExtensionMessage(nextObsMsg);
+          }
+        });
+      }, 500);
+    }
   };
 
   const handleCreatePendingTask = async () => {
@@ -569,6 +611,26 @@ export function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {securityChallenge && (
+            <div class="bg-indigo-950/70 border border-indigo-500/60 rounded-lg p-3 mb-4 shadow-lg shadow-indigo-950/50">
+              <div class="flex items-center gap-2 mb-1.5">
+                <ShieldCheckIcon size={18} class="text-indigo-400 shrink-0" />
+                <h3 class="text-xs font-bold text-indigo-300">Security Verification Required</h3>
+              </div>
+              <p class="text-xs text-slate-200 mb-1 leading-relaxed">{securityChallenge.description}</p>
+              <p class="text-[11px] text-indigo-200/80 mb-3">
+                Please solve the CAPTCHA or OTP on the active webpage. The agent is paused and waiting for you.
+              </p>
+              <button
+                onClick={handleResumeAfterChallenge}
+                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 rounded transition inline-flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <CheckCircleIcon size={14} class="shrink-0" />
+                <span>I've Solved It — Resume Action</span>
+              </button>
             </div>
           )}
 

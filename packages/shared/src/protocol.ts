@@ -23,10 +23,30 @@ export const SemanticNodeSchema = z.object({
 
 export type SemanticNode = z.infer<typeof SemanticNodeSchema>;
 
+export const SecurityChallengeTypeSchema = z.enum([
+  "CAPTCHA",
+  "CLOUDFLARE",
+  "RECAPTCHA",
+  "HCAPTCHA",
+  "OTP",
+  "TWO_FACTOR"
+]);
+
+export type SecurityChallengeType = z.infer<typeof SecurityChallengeTypeSchema>;
+
+export const SecurityChallengeSchema = z.object({
+  type: SecurityChallengeTypeSchema,
+  description: z.string(),
+  detectedAt: z.number()
+});
+
+export type SecurityChallenge = z.infer<typeof SecurityChallengeSchema>;
+
 export const PageObservationSchema = z.object({
   url: z.string(),
   title: z.string(),
   interactiveNodes: z.array(SemanticNodeSchema),
+  securityChallenge: SecurityChallengeSchema.optional(),
   timestamp: z.number()
 });
 
@@ -61,6 +81,10 @@ export const ExtensionMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("HUMAN_TAKEOVER_COMPLETED"),
     taskId: z.string()
+  }),
+  z.object({
+    type: z.literal("SECURITY_CHALLENGE_RESOLVED"),
+    taskId: z.string()
   })
 ]);
 
@@ -87,6 +111,11 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
     summary: z.string(),
     consequences: z.string(),
     targetText: z.string().optional()
+  }),
+  z.object({
+    type: z.literal("SECURITY_CHALLENGE_DETECTED"),
+    taskId: z.string(),
+    challenge: SecurityChallengeSchema
   })
 ]);
 

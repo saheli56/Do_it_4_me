@@ -279,6 +279,55 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
   return results;
 }
 
+export function detectSecurityChallenge(doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)): import("@difm/shared").SecurityChallenge | undefined {
+  if (!doc) return undefined;
+
+  // 1. Cloudflare Turnstile / Challenge
+  const cfElem = doc.querySelector('iframe[src*="turnstile"], iframe[src*="cloudflare"], .cf-turnstile, #challenge-stage, #cf-challenge-running, #cf-wrapper');
+  const title = (doc.title || "").toLowerCase();
+  if (cfElem || title.includes("just a moment...") || title.includes("attention required! | cloudflare")) {
+    return {
+      type: "CLOUDFLARE",
+      description: "Cloudflare bot protection or Turnstile verification active on page",
+      detectedAt: Date.now()
+    };
+  }
+
+  // 2. Google reCAPTCHA
+  const recaptchaElem = doc.querySelector('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"], .g-recaptcha, #g-recaptcha');
+  if (recaptchaElem && isElementVisible(recaptchaElem)) {
+    return {
+      type: "RECAPTCHA",
+      description: "Google reCAPTCHA challenge detected",
+      detectedAt: Date.now()
+    };
+  }
+
+  // 3. hCaptcha
+  const hcaptchaElem = doc.querySelector('iframe[src*="hcaptcha"], .h-captcha');
+  if (hcaptchaElem && isElementVisible(hcaptchaElem)) {
+    return {
+      type: "HCAPTCHA",
+      description: "hCaptcha verification challenge detected",
+      detectedAt: Date.now()
+    };
+  }
+
+  // 4. OTP / 2FA SMS & Email prompt
+  const otpInput = doc.querySelector(
+    'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="2fa" i], input[id*="2fa" i], input[placeholder*="otp" i], input[placeholder*="verification code" i]'
+  );
+  if (otpInput && isElementVisible(otpInput)) {
+    return {
+      type: "OTP",
+      description: "SMS / Email One-Time Password (OTP) or 2FA verification prompt detected",
+      detectedAt: Date.now()
+    };
+  }
+
+  return undefined;
+}
+
 export function formatSemanticTreeForPrompt(nodes: SemanticNode[]): string {
   if (nodes.length === 0) {
     return "No interactive elements detected on page.";

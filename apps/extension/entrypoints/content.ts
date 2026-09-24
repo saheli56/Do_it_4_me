@@ -1,5 +1,5 @@
 import { defineContentScript } from "wxt/sandbox";
-import { extractSemanticNodes } from "@difm/a11y-tree";
+import { extractSemanticNodes, detectSecurityChallenge } from "@difm/a11y-tree";
 import type { PageObservation, AgentAction } from "@difm/shared";
 import { executeAgentAction } from "../src/executor.js";
 
@@ -9,10 +9,12 @@ export default defineContentScript({
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === "CAPTURE_OBSERVATION") {
         const nodes = extractSemanticNodes(document.body);
+        const securityChallenge = detectSecurityChallenge(document);
         const observation: PageObservation = {
           url: window.location.href,
           title: document.title,
           interactiveNodes: nodes,
+          securityChallenge,
           timestamp: Date.now()
         };
         sendResponse({ success: true, observation });
