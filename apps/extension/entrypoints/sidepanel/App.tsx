@@ -6,6 +6,28 @@ import type {
   PendingTaskItem,
   PageObservation
 } from "@difm/shared";
+import {
+  LightningIcon,
+  DropIcon,
+  FlameIcon,
+  GlobeIcon,
+  DeviceMobileIcon,
+  CreditCardIcon,
+  FileTextIcon,
+  ClockIcon,
+  CheckCircleIcon,
+  WarningCircleIcon,
+  PlayIcon,
+  PlusIcon,
+  XIcon,
+  PencilSimpleIcon,
+  BuildingsIcon,
+  LinkSimpleIcon,
+  InfoIcon,
+  ListChecksIcon,
+  SparkleIcon,
+  TrashIcon
+} from "../../src/components/icons";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"EXECUTE" | "PENDING">("EXECUTE");
@@ -419,17 +441,21 @@ export function App() {
   return (
     <div class="p-4 flex flex-col h-screen max-w-md mx-auto">
       <header class="border-b border-slate-800 pb-3 mb-3 flex items-center justify-between">
-        <div>
-          <h1 class="text-lg font-bold text-indigo-400 leading-none">Do It For Me</h1>
-          <span class="text-[10px] text-slate-500 font-mono">Personal Action Agent</span>
+        <div class="flex items-center gap-1.5">
+          <SparkleIcon size={20} class="text-indigo-400" />
+          <div>
+            <h1 class="text-lg font-bold text-indigo-400 leading-none">Do It For Me</h1>
+            <span class="text-[10px] text-slate-500 font-mono">Personal Action Agent</span>
+          </div>
         </div>
         <div class="flex gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
           <button
             onClick={() => setActiveTab("EXECUTE")}
-            class={`px-2.5 py-1 rounded-md font-medium transition ${
+            class={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1 transition ${
               activeTab === "EXECUTE" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
             }`}
           >
+            <LightningIcon size={14} />
             Action
           </button>
           <button
@@ -438,6 +464,7 @@ export function App() {
               activeTab === "PENDING" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
             }`}
           >
+            <ListChecksIcon size={14} />
             Tasks & Notes
             {pendingTasks.filter((t) => t.status !== "COMPLETED").length > 0 && (
               <span class="bg-indigo-950 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-indigo-700">
@@ -450,7 +477,7 @@ export function App() {
 
       {remindersDue.length > 0 && (
         <div class="bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5 mb-3 flex items-start gap-2 animate-pulse">
-          <span class="text-amber-400 text-sm font-bold">⏰</span>
+          <ClockIcon size={18} class="text-amber-400 mt-0.5" />
           <div class="flex-1">
             <span class="text-xs font-semibold text-amber-300">Upcoming Due Reminders:</span>
             <div class="text-[11px] text-slate-300 space-y-0.5 mt-0.5">
@@ -459,8 +486,9 @@ export function App() {
                   <span>• {t.title}</span>
                   <button
                     onClick={() => handleExecutePendingTask(t)}
-                    class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium ml-2"
+                    class="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-medium ml-2 inline-flex items-center gap-1"
                   >
+                    <PlayIcon size={11} />
                     Execute Now
                   </button>
                 </div>
@@ -488,8 +516,9 @@ export function App() {
               <button
                 onClick={() => handleStartTask()}
                 disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "CANCELLED")}
-                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition"
+                class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white font-medium px-4 py-2 rounded text-sm transition inline-flex items-center gap-1"
               >
+                <PlayIcon size={14} />
                 Start
               </button>
             </div>
@@ -498,15 +527,15 @@ export function App() {
           {successMessage && (
             <div class="bg-emerald-950/60 border border-emerald-500/60 rounded-lg p-3.5 mb-3 shadow-lg shadow-emerald-950/40">
               <div class="flex items-start gap-2.5">
-                <span class="text-xl">✅</span>
+                <CheckCircleIcon size={24} class="text-emerald-400 shrink-0" />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between">
                     <h3 class="text-xs font-bold text-emerald-300">{successMessage.title}</h3>
                     <button
                       onClick={() => setSuccessMessage(null)}
-                      class="text-slate-400 hover:text-white text-xs px-1"
+                      class="text-slate-400 hover:text-white text-xs p-0.5"
                     >
-                      ✕
+                      <XIcon size={14} />
                     </button>
                   </div>
                   <p class="text-[11px] text-emerald-100/90 mt-1 leading-relaxed">{successMessage.summary}</p>
@@ -539,7 +568,10 @@ export function App() {
 
           {approvalPrompt && (
             <div class="bg-amber-950/40 border border-amber-500/50 rounded-lg p-3 mb-4">
-              <h3 class="text-sm font-semibold text-amber-300 mb-1">Sensitive Approval Required</h3>
+              <div class="flex items-center gap-1.5 mb-1">
+                <WarningCircleIcon size={16} class="text-amber-400" />
+                <h3 class="text-sm font-semibold text-amber-300">Sensitive Approval Required</h3>
+              </div>
               <p class="text-xs text-slate-300 mb-2">{approvalPrompt.summary}</p>
               <p class="text-xs text-amber-200/80 mb-3">{approvalPrompt.consequences}</p>
               <div class="flex gap-2">
@@ -588,7 +620,10 @@ export function App() {
       {activeTab === "PENDING" && (
         <div class="flex-1 flex flex-col min-h-0 overflow-y-auto space-y-4">
           <div class="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2">
-            <h3 class="text-xs font-bold text-indigo-300 uppercase tracking-wider">Add Pending Task</h3>
+            <div class="flex items-center gap-1.5 text-xs font-bold text-indigo-300 uppercase tracking-wider">
+              <PlusIcon size={14} />
+              <span>Add Pending Task</span>
+            </div>
             <input
               type="text"
               placeholder="Task name (e.g. Pay Electricity Bill, Internet Subscription)"
@@ -606,20 +641,22 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setShowBillerDetails(!showBillerDetails)}
-                class={`text-xs px-2.5 py-1 rounded border transition ${
+                class={`text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 transition ${
                   showBillerDetails
                     ? "bg-indigo-900/60 border-indigo-500 text-indigo-200"
                     : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
                 }`}
               >
-                💳 {showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}
+                <CreditCardIcon size={13} />
+                {showBillerDetails ? "Hide Bill Site Info" : "+ Bill Site Info"}
               </button>
             </div>
 
             {showBillerDetails && (
               <div class="bg-slate-900/90 border border-indigo-900/60 rounded p-2.5 space-y-2 text-xs">
-                <div class="text-[11px] font-semibold text-indigo-300">
-                  🏛 Bill Payment Portal & Account Details
+                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
+                  <BuildingsIcon size={14} />
+                  <span>Bill Payment Portal & Account Details</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div>
@@ -642,7 +679,7 @@ export function App() {
                     <label class="text-[10px] text-slate-400 block mb-0.5">Provider / Biller</label>
                     <input
                       type="text"
-                      placeholder="e.g. Tata Power, BESCOM"
+                      placeholder="e.g. Tata Power, CESC, Airtel"
                       value={billerProvider}
                       onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
                       class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
@@ -654,7 +691,7 @@ export function App() {
                   <label class="text-[10px] text-slate-400 block mb-0.5">Payment Portal / Website URL</label>
                   <input
                     type="url"
-                    placeholder="https://tatapower.com/quickpay"
+                    placeholder="https://tatapower.com/quickpay or billing portal"
                     value={billerPortalUrl}
                     onInput={(e) => setBillerPortalUrl((e.target as HTMLInputElement).value)}
                     class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
@@ -708,16 +745,18 @@ export function App() {
             <button
               onClick={handleCreatePendingTask}
               disabled={!newTaskTitle.trim()}
-              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white text-xs font-semibold py-1.5 rounded transition inline-flex items-center justify-center gap-1"
             >
-              ➕ Save Pending Task
+              <PlusIcon size={14} />
+              Save Pending Task
             </button>
           </div>
 
           <div class="space-y-2.5">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Pending Tasks & Notes ({pendingTasks.length})
-            </h3>
+            <div class="flex items-center gap-1 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <ListChecksIcon size={14} />
+              <span>Pending Tasks & Notes ({pendingTasks.length})</span>
+            </div>
             {pendingTasks.length === 0 ? (
               <div class="text-xs text-slate-500 text-center py-6">No pending tasks saved yet.</div>
             ) : (
@@ -752,22 +791,24 @@ export function App() {
                       {t.status !== "COMPLETED" && (
                         <button
                           onClick={() => handleExecutePendingTask(t)}
-                          class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium px-2 py-0.5 rounded transition"
+                          class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium px-2 py-0.5 rounded transition inline-flex items-center gap-1"
                         >
+                          <PlayIcon size={11} />
                           Execute
                         </button>
                       )}
                       <button
                         onClick={() => handleDeletePendingTask(t.id)}
-                        class="text-slate-500 hover:text-rose-400 text-xs px-1"
+                        class="text-slate-500 hover:text-rose-400 text-xs p-1"
                       >
-                        ✕
+                        <TrashIcon size={13} />
                       </button>
                     </div>
                   </div>
 
                   {t.dueDate && (
                     <div class="text-[10px] text-slate-400 flex items-center gap-1 mb-1.5">
+                      <ClockIcon size={11} />
                       <span>Due:</span>
                       <span class={t.status === "DUE_SOON" ? "text-amber-400 font-bold" : "text-slate-300"}>
                         {new Date(t.dueDate).toLocaleDateString()}
@@ -778,14 +819,20 @@ export function App() {
                   {t.billerInfo && (
                     <div class="bg-indigo-950/40 border border-indigo-900/50 rounded p-2 mb-1.5 text-[11px] space-y-1">
                       <div class="flex items-center justify-between text-indigo-300 font-medium">
-                        <span>🏛 {t.billerInfo.providerName || t.billerInfo.billType}</span>
+                        <span class="inline-flex items-center gap-1">
+                          <BuildingsIcon size={12} />
+                          {t.billerInfo.providerName || t.billerInfo.billType}
+                        </span>
                         {t.billerInfo.consumerNumber && (
                           <span class="text-[10px] text-slate-400 font-mono">#{t.billerInfo.consumerNumber}</span>
                         )}
                       </div>
                       {t.billerInfo.portalUrl && (
-                        <div class="truncate text-[10px] text-indigo-400">
-                          🔗 <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline">{t.billerInfo.portalUrl}</a>
+                        <div class="truncate text-[10px] text-indigo-400 flex items-center gap-1">
+                          <LinkSimpleIcon size={11} />
+                          <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline truncate">
+                            {t.billerInfo.portalUrl}
+                          </a>
                         </div>
                       )}
                       {t.billerInfo.subdivision && (
@@ -794,8 +841,9 @@ export function App() {
                         </div>
                       )}
                       {t.billerInfo.additionalInstructions && (
-                        <div class="text-[10px] text-slate-400 italic">
-                          ℹ️ {t.billerInfo.additionalInstructions}
+                        <div class="text-[10px] text-slate-400 italic flex items-center gap-1">
+                          <InfoIcon size={11} />
+                          <span>{t.billerInfo.additionalInstructions}</span>
                         </div>
                       )}
                     </div>
@@ -803,7 +851,8 @@ export function App() {
 
                   <div class="bg-slate-900/60 border border-slate-800/80 rounded p-2 text-xs">
                     <div class="flex items-center justify-between mb-1">
-                      <span class="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider">
+                      <span class="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
+                        <FileTextIcon size={11} />
                         Notes / Context
                       </span>
                       {editingNotesId !== t.id && (
@@ -812,8 +861,9 @@ export function App() {
                             setEditingNotesId(t.id);
                             setCurrentNoteText(t.notes || "");
                           }}
-                          class="text-[10px] text-slate-400 hover:text-indigo-300"
+                          class="text-[10px] text-slate-400 hover:text-indigo-300 inline-flex items-center gap-0.5"
                         >
+                          <PencilSimpleIcon size={11} />
                           Edit
                         </button>
                       )}
