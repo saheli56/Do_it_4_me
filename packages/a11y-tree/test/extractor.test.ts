@@ -4,7 +4,8 @@ import {
   extractSemanticNodes,
   formatSemanticTreeForPrompt,
   getAccessibleRole,
-  getAccessibleName
+  getAccessibleName,
+  detectSecurityChallenge
 } from "../src/extractor.js";
 
 describe("a11y-tree extractor", () => {
@@ -146,5 +147,27 @@ describe("a11y-tree extractor", () => {
     const advanceLink = nodes.find((n) => n.name.includes("Advance Payment"));
     expect(advanceLink).toBeDefined();
     expect(advanceLink?.href).toContain("advancebill.php");
+  });
+
+  it("detects single and segmented multi-digit OTP security challenges", () => {
+    document.body.innerHTML = `
+      <form class="otp-form">
+        <h2>Enter Verification Code</h2>
+        <p>A 6-digit code was sent to +91 9876543210</p>
+        <div class="digit-inputs">
+          <input type="text" maxlength="1" data-index="0" />
+          <input type="text" maxlength="1" data-index="1" />
+          <input type="text" maxlength="1" data-index="2" />
+          <input type="text" maxlength="1" data-index="3" />
+          <input type="text" maxlength="1" data-index="4" />
+          <input type="text" maxlength="1" data-index="5" />
+        </div>
+        <button type="submit">Verify OTP</button>
+      </form>
+    `;
+
+    const challenge = detectSecurityChallenge(document);
+    expect(challenge).toBeDefined();
+    expect(challenge?.type).toBe("OTP");
   });
 });

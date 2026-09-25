@@ -519,6 +519,12 @@ export function App() {
     summary: string;
   } | null>(null);
 
+  // Smart OTP & 2FA Quick-Paste Popover State
+  const [otpInputCode, setOtpInputCode] = useState("");
+  const [isInjectingOtp, setIsInjectingOtp] = useState(false);
+  const [otpStatusMsg, setOtpStatusMsg] = useState<string | null>(null);
+  const [isManualOtpModalOpen, setIsManualOtpModalOpen] = useState(false);
+
   // App Theme & Accent Color State
   const [accentColor, setAccentColor] = useState<AppAccentColor>(() => {
     try {
@@ -1609,6 +1615,77 @@ export function App() {
     }
   };
 
+  const handlePasteOtpFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        setOtpStatusMsg("Clipboard is empty.");
+        return;
+      }
+      const numMatch = text.match(/\b\d{4,8}\b/) || text.match(/\d+/g);
+      const extractedDigits = numMatch ? (Array.isArray(numMatch) ? numMatch.join("") : numMatch[0]) : text.replace(/\D/g, "");
+      const finalCode = extractedDigits.slice(0, 8) || text.trim();
+      setOtpInputCode(finalCode);
+      setOtpStatusMsg(`Pasted code "${finalCode}" from clipboard.`);
+    } catch {
+      setOtpStatusMsg("Clipboard access unavailable. Please type OTP directly.");
+    }
+  };
+
+  const handleInjectOtp = async (codeToUse?: string) => {
+    const code = (codeToUse || otpInputCode).trim();
+    if (!code) {
+      setOtpStatusMsg("Please enter or paste an OTP code.");
+      return;
+    }
+
+    setIsInjectingOtp(true);
+    setOtpStatusMsg("Injecting OTP code into active tab...");
+
+    let activeTabId = executionTabIdRef.current;
+    if (!activeTabId) {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      activeTabId = tab?.id || null;
+    }
+
+    if (!activeTabId) {
+      setIsInjectingOtp(false);
+      setOtpStatusMsg("No active browser tab found.");
+      return;
+    }
+
+    chrome.tabs.sendMessage(activeTabId, { type: "INJECT_OTP", code }, (res) => {
+      setIsInjectingOtp(false);
+      if (res?.success) {
+        setOtpStatusMsg("OTP injected and verification triggered!");
+        setSecurityChallenge(null);
+        setIsManualOtpModalOpen(false);
+        setOtpInputCode("");
+        setTaskState("PLANNING");
+        setLogs((prev) => [...prev, `[2FA/OTP Auto-Fill] Code ${code.replace(/.(?=.{2})/g, "*")} entered and verified.`]);
+
+        if (taskId) {
+          const resumeMsg: ExtensionMessage = {
+            type: "SECURITY_CHALLENGE_RESOLVED",
+            taskId
+          };
+          sendExtensionMessage(resumeMsg);
+
+          if (res?.observation) {
+            const nextObsMsg: ExtensionMessage = {
+              type: "PAGE_OBSERVATION",
+              taskId,
+              observation: res.observation
+            };
+            sendExtensionMessage(nextObsMsg);
+          }
+        }
+      } else {
+        setOtpStatusMsg(res?.error || "Could not autofill OTP automatically. Please enter directly in tab.");
+      }
+    });
+  };
+
   const handleOpenEditTask = (task: PendingTaskItem) => {
     setEditingTask(task);
     setEditTitle(task.title || "");
@@ -2634,28 +2711,113 @@ export function App() {
             </div>
           )}
 
-          {/* Security Challenge / Human Takeover Alert */}
+          {/* Security Challenge / Human Takeover Alert / Smart OTP Popover */}
           {securityChallenge && (
-            <div class="glass-panel bg-amber-950/40 border-amber-500/50 rounded-xl p-3.5 shadow-lg shadow-amber-950/40 animate-scale-in">
-              <div class="flex items-start gap-2.5">
-                <WarningCircleIcon size={20} class="text-amber-400 shrink-0 mt-0.5" />
-                <div class="flex-1 min-w-0">
-                  <h3 class="text-xs font-bold text-amber-300">Human Verification Required</h3>
-                  <p class="text-[11px] text-amber-100/90 mt-1 leading-relaxed">
-                    {securityChallenge.description || "Please solve the security challenge (CAPTCHA / 2FA) in the browser tab."}
-                  </p>
-                  <div class="mt-2.5 flex items-center gap-2">
+            securityChallenge.type === "OTP" ? (
+              <div class="glass-panel bg-indigo-950/40 border-indigo-500/50 rounded-xl p-3.5 shadow-xl shadow-indigo-950/50 animate-scale-in space-y-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
+                      <ShieldCheckIcon size={16} class="text-indigo-300" />
+                    </div>
+                    <div>
+                      <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span>2FA / One-Time Password (OTP)</span>
+                        <span class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/30 text-indigo-300 font-mono">
+                          Auto-Detected
+                        </span>
+                      </h3>
+                      <p class="text-[10px] text-indigo-200/80 mt-0.5">
+                        {securityChallenge.description || "SMS or Email verification code required on this page."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OTP Input & Clipboard Quick-Paste Box */}
+                <div class="space-y-2 pt-1">
+                  <div class="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={8}
+                      placeholder="Enter 4, 6, or 8-digit OTP"
+                      value={otpInputCode}
+                      onInput={(e) => setOtpInputCode((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleInjectOtp();
+                      }}
+                      class="flex-1 glass-input rounded-lg px-3 h-9 text-sm font-mono tracking-widest text-center text-white placeholder-zinc-500 font-bold focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={handlePasteOtpFromClipboard}
+                      type="button"
+                      title="Paste OTP code directly from clipboard"
+                      class="px-2.5 h-9 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border border-indigo-400/30 active:scale-95 transition"
+                    >
+                      <CopyIcon size={12} />
+                      <span>Paste</span>
+                    </button>
+                  </div>
+
+                  {otpStatusMsg && (
+                    <div class="text-[10px] text-indigo-300 font-mono bg-indigo-950/60 px-2 py-1 rounded border border-indigo-500/20">
+                      {otpStatusMsg}
+                    </div>
+                  )}
+
+                  <div class="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => handleInjectOtp()}
+                      disabled={isInjectingOtp || !otpInputCode.trim()}
+                      class="flex-1 shimmer-btn text-white text-xs font-bold h-8 rounded-lg inline-flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      {isInjectingOtp ? (
+                        <>
+                          <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Autofilling...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PlayIcon size={11} class="fill-current" />
+                          <span>Auto-Fill & Verify</span>
+                        </>
+                      )}
+                    </button>
+
                     <button
                       onClick={handleResumeAfterChallenge}
-                      class="text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1 rounded-md transition inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                      type="button"
+                      title="Resume if you already typed the code in the page manually"
+                      class="px-3 h-8 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs font-semibold border border-white/[0.08] active:scale-95 transition"
                     >
-                      <CheckCircleIcon size={12} />
-                      <span>I Solved It, Continue</span>
+                      <span>I Solved It Manually</span>
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div class="glass-panel bg-amber-950/40 border-amber-500/50 rounded-xl p-3.5 shadow-lg shadow-amber-950/40 animate-scale-in">
+                <div class="flex items-start gap-2.5">
+                  <WarningCircleIcon size={20} class="text-amber-400 shrink-0 mt-0.5" />
+                  <div class="flex-1 min-w-0">
+                    <h3 class="text-xs font-bold text-amber-300">Human Verification Required</h3>
+                    <p class="text-[11px] text-amber-100/90 mt-1 leading-relaxed">
+                      {securityChallenge.description || "Please solve the security challenge (CAPTCHA / 2FA) in the browser tab."}
+                    </p>
+                    <div class="mt-2.5 flex items-center gap-2">
+                      <button
+                        onClick={handleResumeAfterChallenge}
+                        class="text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1 rounded-md transition inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <CheckCircleIcon size={12} />
+                        <span>I Solved It, Continue</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
           )}
 
           {/* Sensitive Action User Approval Card */}

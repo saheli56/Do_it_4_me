@@ -344,12 +344,22 @@ export function detectSecurityChallenge(doc: Document = typeof document !== "und
 
   // 3. OTP / 2FA SMS & Email prompt
   const otpInput = doc.querySelector(
-    'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="2fa" i], input[id*="2fa" i], input[placeholder*="otp" i], input[placeholder*="verification code" i]'
+    'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="2fa" i], input[id*="2fa" i], input[placeholder*="otp" i], input[placeholder*="verification code" i], input[placeholder*="enter code" i], input[placeholder*="security code" i], input[placeholder*="passcode" i], input[aria-label*="otp" i], input[aria-label*="digit" i], input.otp-input, input.otp, [data-testid*="otp" i], input[name*="passcode" i]'
   );
   if (otpInput && isElementVisible(otpInput)) {
     return {
       type: "OTP",
       description: "SMS / Email One-Time Password (OTP) or 2FA verification prompt detected",
+      detectedAt: Date.now()
+    };
+  }
+
+  // Also check for multiple segmented digit boxes (e.g. 4 or 6 single-digit inputs)
+  const digitBoxes = doc.querySelectorAll('input[maxlength="1"][type="text"], input[maxlength="1"][type="tel"], input[maxlength="1"][type="number"], input[data-index]');
+  if (digitBoxes.length >= 4 && isElementVisible(digitBoxes[0])) {
+    return {
+      type: "OTP",
+      description: "Multi-digit One-Time Password (OTP) / 2FA verification boxes detected",
       detectedAt: Date.now()
     };
   }

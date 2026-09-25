@@ -291,3 +291,118 @@ export async function executeAgentAction(
     return { success: false, error: errorMsg };
   }
 }
+
+export async function injectOtpCode(
+  rawOtp: string,
+  doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    if (!rawOtp || !rawOtp.trim()) {
+      return { success: false, error: "No OTP code provided." };
+    }
+
+    // Sanitize digits (e.g. "Your OTP is 482910 for txn" -> "482910")
+    const sanitized = rawOtp.replace(/\D/g, "").trim() || rawOtp.trim();
+
+    const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
+    const Evt = (win && (win as unknown as { Event: typeof Event }).Event) || Event;
+
+    // 1. Check for segmented multi-box inputs (e.g. 4, 6, or 8 inputs with maxlength=1 or data-index)
+    const digitBoxes = Array.from(
+      doc.querySelectorAll<HTMLInputElement>(
+        'input[maxlength="1"], input[data-index], .otp-digit, input[name*="otp_"], input[id*="otp_"], input[aria-label*="digit" i]'
+      )
+    ).filter((el) => {
+      const style = win?.getComputedStyle ? win.getComputedStyle(el) : null;
+      return style?.display !== "none" && style?.visibility !== "hidden";
+    });
+
+    if (digitBoxes.length >= 4) {
+      // Split digits across boxes
+      for (let i = 0; i < digitBoxes.length && i < sanitized.length; i++) {
+        const box = digitBoxes[i];
+        if (box.disabled) box.disabled = false;
+        if (box.readOnly) box.readOnly = false;
+        try {
+          box.focus();
+        } catch {}
+
+        const char = sanitized[i];
+        const proto = HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (nativeSetter) {
+          nativeSetter.call(box, char);
+        } else {
+          box.value = char;
+        }
+
+        box.dispatchEvent(new Evt("input", { bubbles: true, composed: true }));
+        box.dispatchEvent(new Evt("change", { bubbles: true, composed: true }));
+      }
+      await highlightElement(digitBoxes[0], "Injected Multi-digit OTP");
+    } else {
+      // 2. Single OTP input
+      const singleOtpInput = doc.querySelector<HTMLInputElement>(
+        'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="2fa" i], input[id*="2fa" i], input[placeholder*="otp" i], input[placeholder*="verification code" i], input[placeholder*="enter code" i], input[placeholder*="security code" i], input[placeholder*="passcode" i], input[aria-label*="otp" i], input.otp-input, input.otp, [data-testid*="otp" i], input[name*="passcode" i]'
+      );
+
+      if (!singleOtpInput) {
+        return { success: false, error: "Could not find OTP input on webpage." };
+      }
+
+      if (singleOtpInput.disabled) singleOtpInput.disabled = false;
+      if (singleOtpInput.readOnly) singleOtpInput.readOnly = false;
+      try {
+        singleOtpInput.focus();
+      } catch {}
+
+      const proto = HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (nativeSetter) {
+        nativeSetter.call(singleOtpInput, sanitized);
+      } else {
+        singleOtpInput.value = sanitized;
+      }
+
+      singleOtpInput.dispatchEvent(new Evt("input", { bubbles: true, composed: true }));
+      singleOtpInput.dispatchEvent(new Evt("change", { bubbles: true, composed: true }));
+      singleOtpInput.dispatchEvent(new Evt("blur", { bubbles: true, composed: true }));
+      await highlightElement(singleOtpInput, "Injected OTP Code");
+    }
+
+    await waitForSettlement(doc, 200);
+
+    // 3. Attempt to automatically click the Verify / Submit button
+    const buttons = Array.from(
+      doc.querySelectorAll<HTMLElement>(
+        'button[type="submit"], input[type="submit"], button, a[role="button"], [role="button"]'
+      )
+    );
+    const submitBtn = buttons.find((btn) => {
+      const text = (btn.textContent || (btn as HTMLInputElement).value || "").toLowerCase().trim();
+      const aria = (btn.getAttribute("aria-label") || "").toLowerCase().trim();
+      const name = (btn.getAttribute("name") || "").toLowerCase().trim();
+      const id = (btn.getAttribute("id") || "").toLowerCase().trim();
+      const matches = [text, aria, name, id].join(" ");
+      return (
+        matches.includes("verify") ||
+        matches.includes("submit") ||
+        matches.includes("proceed") ||
+        matches.includes("continue") ||
+        matches.includes("validate") ||
+        matches.includes("confirm")
+      );
+    });
+
+    if (submitBtn) {
+      await highlightElement(submitBtn, "Submitting OTP");
+      submitBtn.click();
+    }
+
+    await waitForSettlement(doc, 300);
+    return { success: true, message: "OTP injected and verification triggered successfully." };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to inject OTP";
+    return { success: false, error: msg };
+  }
+}
