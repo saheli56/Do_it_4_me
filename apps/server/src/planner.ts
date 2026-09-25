@@ -658,12 +658,30 @@ Respond with ONLY a JSON object in this schema:
       category = "ELECTRICITY";
       providerName = "CESC Electricity";
       portalUrl = "https://www.cesc.co.in";
-    } else if (/electricity|power|bescom|tata power/i.test(raw)) {
+    } else if (/bescom/i.test(raw)) {
+      category = "ELECTRICITY";
+      providerName = "BESCOM Electricity";
+      portalUrl = "https://www.bescom.co.in";
+    } else if (/tata power/i.test(raw)) {
+      category = "ELECTRICITY";
+      providerName = "Tata Power";
+    } else if (/electricity|power|wbsedcl/i.test(raw)) {
       category = "ELECTRICITY";
       providerName = "Electricity Board";
-    } else if (/airtel|jio|broadband|recharge/i.test(raw)) {
+    } else if (/airtel/i.test(raw)) {
+      category = /broadband|wifi|fiber/i.test(raw) ? "INTERNET" : "MOBILE";
+      providerName = "Airtel";
+      portalUrl = "https://www.airtel.in";
+    } else if (/jio/i.test(raw)) {
+      category = /fiber|broadband|wifi/i.test(raw) ? "INTERNET" : "MOBILE";
+      providerName = "Jio";
+      portalUrl = "https://www.jio.com";
+    } else if (/broadband|internet|wifi/i.test(raw)) {
+      category = "INTERNET";
+      providerName = "Internet Service Provider";
+    } else if (/recharge|mobile/i.test(raw)) {
       category = "MOBILE";
-      providerName = "Mobile / Broadband";
+      providerName = "Mobile Operator";
     } else if (/water/i.test(raw)) {
       category = "WATER";
       providerName = "Water Department";

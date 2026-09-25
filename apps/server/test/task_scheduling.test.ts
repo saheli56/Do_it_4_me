@@ -153,4 +153,55 @@ describe("Task Management & Scheduling", () => {
     expect(parsed.missingFields).toContain("consumerNumber");
     expect(parsed.clarificationPrompt).toBeDefined();
   });
+
+  it("parses complete raw notes without missing fields when consumer number is provided", async () => {
+    const { PlannerService } = await import("../src/planner.js");
+    const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+
+    const parsed = await planner.parseRoughTask({
+      rawGoal: "pay cesc electric bill of Rs 1850 for account 050098765432 due on nov 10 every month on 5th",
+      currentUrl: "https://www.cesc.co.in"
+    });
+
+    expect(parsed.category).toBe("ELECTRICITY");
+    expect(parsed.consumerNumber).toBe("050098765432");
+    expect(parsed.dueAmount).toContain("1850");
+    expect(parsed.missingFields).not.toContain("consumerNumber");
+    expect(parsed.schedule?.frequency).toBe("MONTHLY");
+    expect(parsed.schedule?.dayOfMonth).toBe(5);
+    expect(parsed.requiresHumanApproval).toBe(true);
+  });
+
+  it("integrates parsed rough note into scheduled task manager with biller info", async () => {
+    const { PlannerService } = await import("../src/planner.js");
+    const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+
+    const parsed = await planner.parseRoughTask({
+      rawGoal: "recharge airtel broadband 999 every month on 1st"
+    });
+
+    const task = manager.createTask({
+      title: parsed.title,
+      priority: "HIGH",
+      category: parsed.category,
+      dueDate: parsed.dueDate,
+      notes: parsed.formattedGoal,
+      targetUrl: parsed.targetUrl || "https://www.airtel.in",
+      schedule: parsed.schedule,
+      billerInfo: {
+        providerName: parsed.providerName || "Airtel Broadband",
+        billType: parsed.category,
+        billingCycle: parsed.billingCycle,
+        consumerNumber: "9876543210",
+        amount: parsed.dueAmount || "₹999",
+        portalUrl: parsed.targetUrl || "https://www.airtel.in"
+      }
+    });
+
+    expect(task.id).toBeDefined();
+    expect(task.title).toContain("Airtel");
+    expect(task.billerInfo?.consumerNumber).toBe("9876543210");
+    expect(task.schedule?.enabled).toBe(true);
+    expect(task.schedule?.nextRunAt).toBeDefined();
+  });
 });
