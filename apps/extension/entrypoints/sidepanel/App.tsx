@@ -590,51 +590,101 @@ export function App() {
   const [isCreatingNewProfile, setIsCreatingNewProfile] = useState(false);
 
   // Smart Notes & Raw Reminders State
-  const [noteInput, setNoteInput] = useState("");
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [savedNotes, setSavedNotes] = useState<RawNoteItem[]>(() => {
     try {
       const cached = localStorage.getItem("difm_saved_rough_notes");
-      return cached
-        ? JSON.parse(cached)
-        : [
-            {
-              id: "note-sample-1",
-              rawText: "CESC electric bill around 1450 due before oct 15, pay on 5th every month",
-              createdAt: Date.now() - 3600000,
-              status: "NEEDS_CLARIFICATION",
-              parsedDraft: {
-                formattedGoal:
-                  "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
-                title: "Pay CESC Electricity Bill",
-                category: "ELECTRICITY",
-                billingCycle: "MONTHLY",
-                dueAmount: "₹1,450",
-                dueDate: "2026-10-15",
-                providerName: "CESC Electricity",
-                targetUrl: "https://www.cesc.co.in",
-                schedule: {
-                  enabled: true,
-                  frequency: "MONTHLY",
-                  time: "09:30",
-                  dayOfMonth: 5,
-                  autoExecute: false
-                },
-                missingFields: ["consumerNumber"],
-                clarificationPrompt:
-                  "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
-                requiresHumanApproval: true,
-                safetySummary:
-                  "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
-              }
-            }
-          ];
-    } catch {
-      return [];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        id: "note-sample-1",
+        rawText: "CESC electric bill around 1450 due before oct 15, pay on 5th every month",
+        createdAt: Date.now() - 3600000,
+        status: "NEEDS_CLARIFICATION",
+        parsedDraft: {
+          formattedGoal:
+            "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
+          title: "Pay CESC Electricity Bill",
+          category: "ELECTRICITY",
+          billingCycle: "MONTHLY",
+          dueAmount: "₹1,450",
+          dueDate: "2026-10-15",
+          providerName: "CESC Electricity",
+          targetUrl: "https://www.cesc.co.in",
+          schedule: {
+            enabled: true,
+            frequency: "MONTHLY",
+            time: "09:30",
+            dayOfMonth: 5,
+            autoExecute: false
+          },
+          missingFields: ["consumerNumber"],
+          clarificationPrompt:
+            "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
+          requiresHumanApproval: true,
+          safetySummary:
+            "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
+        }
+      }
+    ];
+  });
+  const [noteInput, setNoteInput] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_rough_notes");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed[0]?.rawText) return parsed[0].rawText;
+      }
+    } catch {}
+    return "CESC electric bill around 1450 due before oct 15, pay on 5th every month";
+  });
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_rough_notes");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed[0]?.id) return parsed[0].id;
+      }
+    } catch {}
+    return "note-sample-1";
   });
   const [isNoteAnalyzing, setIsNoteAnalyzing] = useState(false);
-  const [activeNoteDraft, setActiveNoteDraft] = useState<RawNoteItem["parsedDraft"] | null>(null);
+  const [activeNoteDraft, setActiveNoteDraft] = useState<RawNoteItem["parsedDraft"] | null>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_rough_notes");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed[0]?.parsedDraft) return parsed[0].parsedDraft;
+      }
+    } catch {}
+    return {
+      formattedGoal:
+        "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
+      title: "Pay CESC Electricity Bill",
+      category: "ELECTRICITY",
+      billingCycle: "MONTHLY",
+      dueAmount: "₹1,450",
+      dueDate: "2026-10-15",
+      providerName: "CESC Electricity",
+      targetUrl: "https://www.cesc.co.in",
+      schedule: {
+        enabled: true,
+        frequency: "MONTHLY",
+        time: "09:30",
+        dayOfMonth: 5,
+        autoExecute: false
+      },
+      missingFields: ["consumerNumber"],
+      clarificationPrompt:
+        "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
+      requiresHumanApproval: true,
+      safetySummary:
+        "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
+    };
+  });
 
   // AI Smart Task Architect & Auto-Scheduler State
   const [isSmartSchedulerOpen, setIsSmartSchedulerOpen] = useState(false);
@@ -2058,54 +2108,144 @@ export function App() {
 
   // Smart Notes Action Handlers
   const handleAnalyzeRawNote = async (textToParse?: string) => {
-    const raw = (textToParse ?? noteInput).trim();
+    const raw = (typeof textToParse === "string" ? textToParse : noteInput || "").trim();
     if (!raw) return;
     setIsNoteAnalyzing(true);
     try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
-      const res = await fetch("http://127.0.0.1:3001/parse-rough-task", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rawGoal: raw,
-          currentUrl: tab?.url,
-          userProfile: currentActiveProfile
-        })
-      });
+      let draft: RawNoteItem["parsedDraft"] | null = null;
+      let currentTabUrl: string | undefined = undefined;
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.result) {
-          const draft = data.result;
-          setActiveNoteDraft(draft);
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        currentTabUrl = tab?.url;
+      } catch {}
 
-          const existingIndex = activeNoteId ? savedNotes.findIndex((n) => n.id === activeNoteId) : -1;
-          const status = draft.missingFields && draft.missingFields.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT";
+      try {
+        const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+        const res = await fetch("http://127.0.0.1:3001/parse-rough-task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rawGoal: raw,
+            currentUrl: currentTabUrl,
+            userProfile: currentActiveProfile
+          })
+        });
 
-          if (existingIndex >= 0) {
-            const updated = [...savedNotes];
-            updated[existingIndex] = {
-              ...updated[existingIndex],
+        if (res.ok) {
+          const data = await res.json();
+          if (data.result) {
+            draft = data.result;
+          }
+        }
+      } catch (err) {
+        console.warn("Backend parse-rough-task unavailable, using local parser:", err);
+      }
+
+      // Local heuristic fallback parser if backend is offline/slow
+      if (!draft) {
+        let category: TaskCategory = "GENERAL";
+        let providerName: string | undefined = undefined;
+        let portalUrl = currentTabUrl || "";
+
+        if (/cesc/i.test(raw)) {
+          category = "ELECTRICITY";
+          providerName = "CESC Electricity";
+          portalUrl = "https://www.cesc.co.in";
+        } else if (/bescom/i.test(raw)) {
+          category = "ELECTRICITY";
+          providerName = "BESCOM Electricity";
+          portalUrl = "https://www.bescom.co.in";
+        } else if (/tata power/i.test(raw)) {
+          category = "ELECTRICITY";
+          providerName = "Tata Power";
+        } else if (/electricity|power|wbsedcl/i.test(raw)) {
+          category = "ELECTRICITY";
+          providerName = "Electricity Board";
+        } else if (/airtel/i.test(raw)) {
+          category = /broadband|wifi|fiber/i.test(raw) ? "INTERNET" : "MOBILE";
+          providerName = "Airtel";
+          portalUrl = "https://www.airtel.in";
+        } else if (/jio/i.test(raw)) {
+          category = /fiber|broadband|wifi/i.test(raw) ? "INTERNET" : "MOBILE";
+          providerName = "Jio";
+          portalUrl = "https://www.jio.com";
+        } else if (/broadband|internet|wifi/i.test(raw)) {
+          category = "INTERNET";
+          providerName = "Internet Provider";
+        } else if (/credit card|hdfc|sbi card|icici card/i.test(raw)) {
+          category = "CREDIT_CARD";
+          providerName = "Credit Card Bill";
+        } else if (/water/i.test(raw)) {
+          category = "WATER";
+          providerName = "Water Department";
+        }
+
+        const numMatch = raw.match(/\b(\d{6,18})\b/);
+        const amtMatch =
+          raw.match(/(?:rs\.?|inr|₹|\$|bill\s+of|amount\s+of|amount\s*:?|amt\s*:?|of)\s*([\d,]+(?:\.\d{2})?)/i) ||
+          raw.match(/\b([\d,]+(?:\.\d{2})?)\s*(?:rs|rupees|inr)\b/i);
+        const dateMatch = raw.match(/(?:by|before|on|due)?\s*((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{0,4}))/i);
+
+        const missing: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate"> = [];
+        if (!numMatch && category !== "GENERAL") missing.push("consumerNumber");
+        if (!providerName && !portalUrl) missing.push("providerName");
+
+        const title = providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw);
+        const formattedGoal = `Autonomously navigate to ${portalUrl || "the bill payment portal"}, locate billing account field, verify bill details, and pause for human confirmation before payment.`;
+
+        draft = {
+          formattedGoal,
+          title,
+          category,
+          billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : "MONTHLY",
+          dueDate: dateMatch ? dateMatch[1] : undefined,
+          dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
+          consumerNumber: numMatch ? numMatch[1] : undefined,
+          providerName,
+          targetUrl: portalUrl || undefined,
+          schedule: {
+            enabled: /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
+            frequency: "MONTHLY",
+            time: "09:30",
+            dayOfMonth: 5,
+            autoExecute: false
+          },
+          missingFields: missing,
+          clarificationPrompt: missing.length > 0 ? `Please provide your ${missing.join(" and ")} to complete this scheduled task.` : undefined,
+          requiresHumanApproval: true,
+          safetySummary: "Safety Guard: Sensitive payment actions will pause and request your approval before charging."
+        };
+      }
+
+      if (draft) {
+        setActiveNoteDraft(draft);
+
+        const existingIndex = activeNoteId ? savedNotes.findIndex((n) => n.id === activeNoteId) : -1;
+        const status = draft.missingFields && draft.missingFields.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT";
+
+        if (existingIndex >= 0) {
+          const updated = [...savedNotes];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            rawText: raw,
+            status,
+            parsedDraft: draft
+          };
+          setSavedNotes(updated);
+        } else {
+          const newId = "note-" + Date.now();
+          setActiveNoteId(newId);
+          setSavedNotes([
+            {
+              id: newId,
               rawText: raw,
+              createdAt: Date.now(),
               status,
               parsedDraft: draft
-            };
-            setSavedNotes(updated);
-          } else {
-            const newId = "note-" + Date.now();
-            setActiveNoteId(newId);
-            setSavedNotes([
-              {
-                id: newId,
-                rawText: raw,
-                createdAt: Date.now(),
-                status,
-                parsedDraft: draft
-              },
-              ...savedNotes
-            ]);
-          }
+            },
+            ...savedNotes
+          ]);
         }
       }
     } catch (e) {
@@ -3351,7 +3491,7 @@ export function App() {
                 <button
                   type="button"
                   disabled={!noteInput.trim() || isNoteAnalyzing}
-                  onClick={() => handleAnalyzeRawNote()}
+                  onClick={() => handleAnalyzeRawNote(noteInput)}
                   class={`px-3.5 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
                     !noteInput.trim() || isNoteAnalyzing ? "opacity-50 cursor-not-allowed" : ""
                   }`}
