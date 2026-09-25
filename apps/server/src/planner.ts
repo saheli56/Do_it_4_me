@@ -40,12 +40,24 @@ CORE CAPABILITIES & EXECUTION RULES:
   * Only output COMPLETE after clicking the Submit button, or if no submission button exists and all fields are filled.
 
 3. AUTONOMOUS NAVIGATION & DEEP LINKING:
-- If on a homepage, index page, or search page, locate and click the relevant category or action link (e.g. "Contact Us", "Submit", "Sign Up", "Quick Pay", "Pay Bill", "Recharge", "Electricity", "Broadband").
+- If on a homepage, index page, or search page, dynamically inspect the page links and locate the most relevant category or action link:
+  * For bill payments: prioritize links matching "Quick Pay", "Pay Bill", "Online Payment", "Instant Payment", "Pay Online", "Recharge", "Electricity Bill", etc.
+  * NEVER click social media links/icons (e.g. Facebook, Twitter/X, Instagram, YouTube, LinkedIn, Pinterest) unless the goal explicitly requests social media.
+  * Avoid footer external feeds or irrelevant navigation links.
 
-4. UTILITY BILLS & PAYMENT QR CODES:
-- For bill payments, advance through portal steps to reach the bill details or payment screen.
-- Prefer selecting "UPI / QR Code" or "Scan to Pay" so the QR code appears directly on the user's screen.
-- Never finalize a financial charge without explicit approval: output COMPLETE or REQUEST_APPROVAL when the QR code is displayed or when reaching final card submission.
+4. UTILITY BILLS, PAYMENT TIMELINE / CYCLE DISAMBIGUATION & QR CODES:
+- When arriving at a portal with multiple bill payment / timeline options (e.g. "Monthly Bill", "Quarterly Bill", "Yearly / Annual Bill", "Advance Payment", "Loss of Bill", "Security Deposit", "Reconnection Fee", "Installment Payment"):
+  * Check the user goal for the requested Billing Timeline / Cycle (e.g. "Monthly", "Quarterly", "Yearly/Annual", "Advance Payment", "One-time"):
+    - If "Monthly Bill" / "Monthly": Match and click the "Monthly Bill" / "Monthly Payment" / "Quick Bill Pay" option.
+    - If "Quarterly Bill" / "Quarterly": Match and click the "Quarterly Bill" / "Quarterly Payment" option.
+    - If "Yearly / Annual" / "Yearly" / "Annual": Match and click the "Annual Bill" / "Yearly Bill" / "Yearly Payment" option.
+    - If "Advance Payment" / "Advance": Match and click the "Advance Payment" / "Advance Bill" option.
+  * Verify that the selected option / navigated page URL accurately matches the requested billing timeline.
+  * If the option is ambiguous and multiple conflicting payment paths exist without a specified timeline in the goal, output REQUEST_USER_INPUT specifying the options to the user.
+  * On the payment form, locate the Consumer Number / Account ID input, enter the user's account number (e.g. 102938492019), solve/request any captcha if needed, and submit to view the bill.
+  * Advance through portal steps to reach the bill review or payment method screen.
+  * Prefer selecting "UPI / QR Code" or "Scan to Pay" so the QR code appears directly on the user's screen.
+  * Never finalize a financial charge without explicit approval: output COMPLETE or REQUEST_APPROVAL when the QR code is displayed or when reaching final card submission.
 
 5. GENERAL INTERACTION RULES:
 - ONLY use targetId matching nodes in the interactive elements list.
@@ -111,9 +123,14 @@ ${formattedTree}
 
 Analyze the user goal and the interactive elements, then output the next JSON action.`;
 
-    const candidateModels = [this.model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"].filter(
-      (m, idx, arr) => arr.indexOf(m) === idx
-    );
+    // Prioritize configured model, followed by verified live Groq models (qwen/qwen3.8-27b, openai/gpt-oss-120b, openai/gpt-oss-20b)
+    const candidateModels = [
+      this.model,
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "allam-2-7b"
+    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let lastError: string = "";
 
@@ -157,11 +174,8 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
         const errorMsg = err instanceof Error ? err.message : "Planner error";
         lastError = errorMsg;
         console.warn(`Planning attempt with model ${modelToTry} failed:`, errorMsg);
-        // If it's a rate limit / OTPM error (429), try next candidate model
-        if (errorMsg.includes("429") || errorMsg.includes("limit") || errorMsg.includes("tokens")) {
-          continue;
-        }
-        break;
+        // Try next candidate model if current model fails (404, 429, decommissioned, rate limit, etc.)
+        continue;
       }
     }
 
@@ -272,6 +286,181 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
           error: raw.error || raw.description,
           recoverable: raw.recoverable ?? false
         };
+    }
+  }
+
+  async extractBillDetails(params: {
+    text?: string;
+    imageBase64?: string;
+    mimeType?: string;
+    filename?: string;
+  }): Promise<import("@difm/shared").BillExtractResult> {
+    let ocrText = "";
+    if (params.imageBase64) {
+      try {
+        const { createWorker } = await import("tesseract.js");
+        const cleanBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const worker = await createWorker("eng");
+        const ret = await worker.recognize(buffer);
+        await worker.terminate();
+        ocrText = ret.data?.text || "";
+      } catch (ocrErr) {
+        console.warn("Local OCR warning:", ocrErr);
+      }
+    }
+
+    const combinedText = [params.text, ocrText].filter(Boolean).join("\n\n");
+
+    const promptInstructions = `
+You are an expert AI parser for utility bills, invoices, recharge slips, broadband receipts, and payment statements.
+Your job is to analyze the provided document content (text/receipt/invoice) and extract key attributes with high accuracy.
+
+Extract:
+1. billerName: Name of the service provider, vendor, utility board, or company (e.g., "CESC", "Tata Power", "Airtel", "Jio", "BSNL", "AWS", "Google Cloud", "Bangalore Water Supply", "HDFC Credit Card").
+2. consumerNumber: Account number, consumer number, CA number, customer ID, connection ID, phone number (for mobile/broadband recharges), or invoice number.
+3. dueDate: The exact payment due date or bill deadline formatted as YYYY-MM-DD (e.g., "2026-10-05"). If only month/day given, assume the upcoming due date.
+4. dueAmount: The total payable amount, net payable amount, or invoice total formatted with currency or number (e.g., "₹1,450.00", "$45.99", "1450").
+5. category: One of ["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "SHOPPING", "FORM_FILL", "GENERAL", "OTHER"].
+6. billingCycle: One of ["MONTHLY", "QUARTERLY", "YEARLY", "ADVANCE", "ONE_TIME", "CUSTOM"]. (e.g. "MONTHLY" for regular monthly utility bills, "QUARTERLY" for 3-month cycle, "YEARLY" for annual bills/subscriptions, "ADVANCE" for advance payments).
+7. portalUrl: Official payment portal URL if known or found (e.g. "https://www.cesc.co.in", "https://www.airtel.in"), else null.
+8. customerName: Name of the consumer or customer on the bill if present.
+9. notes: A concise summary of the bill details (e.g. "CESC Electricity Bill of ₹1,450 due on 05 Oct 2026").
+
+Respond with ONLY a valid JSON object matching this structure:
+{
+  "billerName": "...",
+  "consumerNumber": "...",
+  "dueDate": "YYYY-MM-DD",
+  "dueAmount": "...",
+  "category": "ELECTRICITY",
+  "billingCycle": "MONTHLY",
+  "portalUrl": "...",
+  "customerName": "...",
+  "notes": "..."
+}
+`;
+
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [];
+
+    if (combinedText.trim()) {
+      userContent.push({
+        type: "text",
+        text: `Document Filename: ${params.filename || "Uploaded Bill"}\n\nDocument Text / Extracted Content:\n${combinedText}`
+      });
+    } else {
+      userContent.push({
+        type: "text",
+        text: `Document Filename: ${params.filename || "Uploaded Bill Image"}\nPlease inspect the attached document to extract biller name, consumer number, due date, and amount.`
+      });
+    }
+
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [
+          { role: "system", content: promptInstructions },
+          { role: "user", content: userContent as any }
+        ],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      });
+
+      const rawContent = response.choices[0]?.message?.content || "{}";
+      const parsed = JSON.parse(rawContent);
+
+      return {
+        billerName: parsed.billerName || undefined,
+        consumerNumber: parsed.consumerNumber || undefined,
+        dueDate: parsed.dueDate || undefined,
+        dueAmount: parsed.dueAmount || undefined,
+        category: parsed.category || "GENERAL",
+        billingCycle: parsed.billingCycle || "MONTHLY",
+        portalUrl: parsed.portalUrl || undefined,
+        customerName: parsed.customerName || undefined,
+        notes: parsed.notes || undefined
+      };
+    } catch (err) {
+      // Fallback heuristics if LLM fails or is offline
+      const textToScan = [params.text, ocrText, params.filename].filter(Boolean).join(" ");
+      let billerName = "Utility Service";
+      let category: import("@difm/shared").TaskCategory = "GENERAL";
+      let billingCycle: import("@difm/shared").BillingCycle = "MONTHLY";
+      let portalUrl = "";
+      let customerName: string | undefined = undefined;
+
+      if (/quarterly|quarter/i.test(textToScan)) {
+        billingCycle = "QUARTERLY";
+      } else if (/annual|yearly|per year/i.test(textToScan)) {
+        billingCycle = "YEARLY";
+      } else if (/advance/i.test(textToScan)) {
+        billingCycle = "ADVANCE";
+      }
+
+      if (/cesc/i.test(textToScan)) {
+        billerName = "CESC Electricity";
+        category = "ELECTRICITY";
+        portalUrl = "https://www.cesc.co.in";
+      } else if (/electricity|power|tneb|bescom|tata power|wbsetcl/i.test(textToScan)) {
+        billerName = "Electricity Board";
+        category = "ELECTRICITY";
+      } else if (/airtel|jio|vi |vodafone|bsnl/i.test(textToScan)) {
+        billerName = "Mobile / Broadband";
+        category = "MOBILE";
+      } else if (/water|bwssb|jal/i.test(textToScan)) {
+        billerName = "Water Department";
+        category = "WATER";
+      } else if (/gas|indane|hp gas|bharat gas|adani/i.test(textToScan)) {
+        billerName = "Gas Utility";
+        category = "GAS";
+      }
+
+      // Customer name regex
+      const custMatch = textToScan.match(/(?:customer|consumer|account\s*holder)?\s*name\s*[:\-]\s*([A-Za-z]+(?:\s+[A-Za-z]+){0,3})/i);
+      if (custMatch && custMatch[1]) {
+        customerName = custMatch[1].trim().replace(/\s+(category|phone|email|subdivision|connection|meter|bill|due).*/i, "").trim();
+      }
+
+      // Regex for portal URL
+      const urlMatch = textToScan.match(/https?:\/\/[^\s"'<>]+/i);
+      if (urlMatch) {
+        portalUrl = urlMatch[0].replace(/[\.,;:)]+$/, "");
+      }
+
+      // Regex for consumer / account numbers
+      const numMatch = textToScan.match(/(?:consumer(?:\s*id|\s*no|\s*number)?|ca\s*no|account(?:\s*no|\s*number|\s*id)?|acct|k\s*no|ref\s*no|customer\s*id)[^\d\n\r]{0,10}(\d{6,18})/i) || textToScan.match(/\b(\d{10,14})\b/);
+      
+      // Regex for dates (YYYY-MM-DD or DD/MM/YYYY or DD-MM-YYYY)
+      const dateMatch = textToScan.match(/(?:due(?:\s*date)?|deadline|by)[^\d\n\r]{0,10}((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{4}))/i) || textToScan.match(/(\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{4})/);
+
+      // Regex for due amount (avoiding 4-digit years like 2026)
+      const amtMatch = textToScan.match(/(?:payable\s*amount(?:\s*due)?|total\s*payable|net\s*payable|amount\s*due|total\s*due|bill\s*amount|rs\.?|inr|₹|\$)[^\d\n\r]{0,10}([\d,]+(?:\.\d{2})?)/i) || textToScan.match(/(?:amount|due|total)[^\d\n\r]{0,10}([\d,]+\.\d{2})/i);
+
+      let formattedDate: string | undefined = undefined;
+      const rawDateStr = dateMatch ? (dateMatch[1] || dateMatch[0]) : undefined;
+      if (rawDateStr) {
+        try {
+          const d = new Date(rawDateStr);
+          if (!isNaN(d.getTime())) {
+            formattedDate = d.toISOString().split("T")[0];
+          }
+        } catch {}
+      }
+
+      return {
+        billerName,
+        consumerNumber: numMatch ? numMatch[1] : undefined,
+        dueDate: formattedDate,
+        dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
+        category,
+        billingCycle,
+        portalUrl: portalUrl || undefined,
+        customerName: customerName || undefined,
+        notes: `Extracted from ${params.filename || "bill document"}`
+      };
     }
   }
 }

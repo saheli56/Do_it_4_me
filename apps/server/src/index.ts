@@ -35,6 +35,28 @@ export async function createServer() {
     return { status: "ok", timestamp: Date.now() };
   });
 
+  // Bill Document Extraction Endpoint (Drag & Drop / Paste)
+  app.post("/extract-bill", async (req, reply) => {
+    const body = req.body as {
+      text?: string;
+      imageBase64?: string;
+      mimeType?: string;
+      filename?: string;
+    };
+
+    if (!body || (!body.text && !body.imageBase64)) {
+      return reply.status(400).send({ error: "Either text or imageBase64 is required" });
+    }
+
+    try {
+      const extracted = await planner.extractBillDetails(body);
+      return { extracted };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to extract bill details";
+      return reply.status(500).send({ error: msg });
+    }
+  });
+
   // Profile Vault Endpoints
   app.get("/profiles", async () => {
     return {

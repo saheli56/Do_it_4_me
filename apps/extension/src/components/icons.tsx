@@ -774,4 +774,52 @@ export function SlidersIcon({ size = 16, class: className = "", ...props }: Icon
   );
 }
 
+export function UploadSimpleIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M216,144a8,8,0,0,0-8,8v48H48V152a8,8,0,0,0-16,0v48a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V152A8,8,0,0,0,216,144ZM82.34,85.66,120,48V144a8,8,0,0,0,16,0V48l37.66,37.66a8,8,0,0,0,11.32-11.32l-51.2-51.2a8,8,0,0,0-11.56,0l-51.2,51.2A8,8,0,0,0,82.34,85.66Z" />
+    </svg>
+  );
+}
+
+export function ScanIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M224,40V80a8,8,0,0,1-16,0V48H176a8,8,0,0,1,0-16h40A8,8,0,0,1,224,40ZM80,208H48V176a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H80a8,8,0,0,0,0-16Zm136-40a8,8,0,0,0-8,8v32H176a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V176A8,8,0,0,0,216,168ZM48,80a8,8,0,0,0,16,0V48H96a8,8,0,0,0,0-16H48a8,8,0,0,0-8,8V80Zm184,40H24a8,8,0,0,0,0,16H232a8,8,0,0,0,0-16Z" />
+    </svg>
+  );
+}
+
+export function FileArrowUpIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM152,44l44,44H152ZM200,216H56V40h80V96a8,8,0,0,0,8,8h56V216Zm-42.34-66.34a8,8,0,0,1,0,11.31l-21.66-21.65V176a8,8,0,0,1-16,0V139.31l-21.66,21.65a8,8,0,0,1-11.31-11.31l35.31-35.32a8,8,0,0,1,11.32,0Z" />
+    </svg>
+  );
+}
+
 

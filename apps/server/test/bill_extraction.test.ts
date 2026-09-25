@@ -1,0 +1,51 @@
+import { describe, it, expect } from "vitest";
+import { PlannerService } from "../src/planner.js";
+
+describe("Bill Document Extraction & Parsing", () => {
+  const planner = new PlannerService("dummy_key", "https://api.groq.com/openai/v1", "qwen/qwen3.8-27b");
+
+  it("extracts biller, consumer number, due date, and amount via heuristic fallback", async () => {
+    const billSampleText = `
+      CESC Limited - Electricity Bill for August 2026
+      Consumer ID: 102938492019
+      Customer Name: John Doe
+      Bill Due Date: 2026-10-15
+      Net Payable Amount: Rs. 1,450.00
+      Subdivision: Central Kolkata Zone
+    `;
+
+    const result = await planner.extractBillDetails({
+      text: billSampleText,
+      filename: "CESC_Electricity_Bill_Aug2026.pdf"
+    });
+
+    expect(result).toBeDefined();
+    expect(result.billerName).toContain("CESC");
+    expect(result.consumerNumber).toBe("102938492019");
+    expect(result.dueDate).toBe("2026-10-15");
+    expect(result.dueAmount).toContain("1,450.00");
+    expect(result.category).toBe("ELECTRICITY");
+    expect(result.customerName).toBe("John Doe");
+  });
+
+  it("extracts mobile / broadband invoice correctly", async () => {
+    const rechargeSampleText = `
+      Airtel Broadband Fiber Receipt
+      Account Number: 8888989261
+      Amount Due: ₹999.00
+      Due Date: 2026-10-02
+    `;
+
+    const result = await planner.extractBillDetails({
+      text: rechargeSampleText,
+      filename: "Airtel_Fiber_Receipt.png"
+    });
+
+    expect(result).toBeDefined();
+    expect(result.billerName).toContain("Mobile / Broadband");
+    expect(result.consumerNumber).toBe("8888989261");
+    expect(result.dueDate).toBe("2026-10-02");
+    expect(result.dueAmount).toContain("999.00");
+    expect(result.category).toBe("MOBILE");
+  });
+});

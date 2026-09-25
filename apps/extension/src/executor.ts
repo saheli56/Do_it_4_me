@@ -1,6 +1,27 @@
 import type { AgentAction, ElementLocator } from "@difm/shared";
 
+function escapeCss(str: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(str);
+  }
+  return str.replace(/([!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~])/g, "\\$1");
+}
+
 export function findTargetElement(locator: ElementLocator, doc: Document = document): Element | null {
+  // 1. Direct ID / data-difm-id lookup (Guarantees clicking the exact extracted element)
+  if (locator.id) {
+    try {
+      const elById = doc.querySelector(`[data-difm-id="${escapeCss(locator.id)}"]`);
+      if (elById) return elById;
+    } catch {}
+
+    if (!locator.id.startsWith("node-")) {
+      const el = doc.getElementById(locator.id);
+      if (el) return el;
+    }
+  }
+
+  // 2. Stable Selector lookup
   if (locator.selector) {
     try {
       const el = doc.querySelector(locator.selector);
@@ -8,11 +29,6 @@ export function findTargetElement(locator: ElementLocator, doc: Document = docum
     } catch {
       // Fallback if selector is invalid
     }
-  }
-
-  if (locator.id && !locator.id.startsWith("node-")) {
-    const el = doc.getElementById(locator.id);
-    if (el) return el;
   }
 
   if (locator.name) {

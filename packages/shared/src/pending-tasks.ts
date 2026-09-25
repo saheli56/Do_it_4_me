@@ -81,10 +81,21 @@ export const PendingTaskStatusSchema = z.enum([
 ]);
 export type PendingTaskStatus = z.infer<typeof PendingTaskStatusSchema>;
 
+export const BillingCycleSchema = z.enum([
+  "MONTHLY",
+  "QUARTERLY",
+  "YEARLY",
+  "ADVANCE",
+  "ONE_TIME",
+  "CUSTOM"
+]);
+export type BillingCycle = z.infer<typeof BillingCycleSchema>;
+
 export const BillerInfoSchema = z.object({
   profileId: z.string().optional(),
   providerName: z.string().optional(),
   billType: TaskCategorySchema.default("GENERAL"),
+  billingCycle: BillingCycleSchema.optional().default("MONTHLY"),
   consumerNumber: z.string().optional(),
   subdivision: z.string().optional(),
   portalUrl: z.string().optional(),
@@ -93,9 +104,23 @@ export const BillerInfoSchema = z.object({
   lastName: z.string().optional(),
   phoneNumber: z.string().optional(),
   emailAddress: z.string().optional(),
+  amount: z.string().optional(),
   additionalInstructions: z.string().optional()
 });
 export type BillerInfo = z.infer<typeof BillerInfoSchema>;
+
+export const BillExtractResultSchema = z.object({
+  billerName: z.string().optional(),
+  consumerNumber: z.string().optional(),
+  dueDate: z.string().optional(), // YYYY-MM-DD
+  dueAmount: z.string().optional(),
+  category: TaskCategorySchema.default("GENERAL"),
+  billingCycle: BillingCycleSchema.optional().default("MONTHLY"),
+  portalUrl: z.string().optional(),
+  customerName: z.string().optional(),
+  notes: z.string().optional()
+});
+export type BillExtractResult = z.infer<typeof BillExtractResultSchema>;
 
 export const PendingTaskItemSchema = z.object({
   id: z.string(),

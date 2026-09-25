@@ -21,13 +21,15 @@ async function checkDueTasksAndNotify() {
         if (NOTIFIED_CACHE.has(cacheKey)) continue;
 
         const dueMsg = task.dueDate ? `Due date: ${new Date(task.dueDate).toLocaleDateString()}` : "Due soon!";
+        const amtMsg = task.billerInfo?.amount ? `\nPayable Amount: ${task.billerInfo.amount}` : "";
+        const acctMsg = task.billerInfo?.consumerNumber ? `\nA/C No: ${task.billerInfo.consumerNumber}` : "";
         const notesMsg = task.notes ? `\nNotes: ${task.notes}` : "";
 
         chrome.notifications.create(`task-${task.id}`, {
           type: "basic",
           iconUrl: chrome.runtime.getURL("/wxt.svg"),
           title: `⏰ Pending Task Due: ${task.title}`,
-          message: `${task.description || task.title}\n${dueMsg}${notesMsg}`,
+          message: `${task.description || task.title}\n${dueMsg}${amtMsg}${acctMsg}${notesMsg}`,
           priority: 2,
           requireInteraction: true
         });

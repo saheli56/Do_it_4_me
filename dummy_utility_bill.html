@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CESC Limited - Electricity Bill Invoice</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 30px;
+    }
+    .bill-card {
+      background: #ffffff;
+      width: 680px;
+      border: 1px solid #dcdfe4;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+    .bill-header {
+      background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+      color: #ffffff;
+      padding: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .biller-title h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .biller-title p {
+      font-size: 11px;
+      opacity: 0.85;
+      margin-top: 3px;
+    }
+    .invoice-tag {
+      text-align: right;
+    }
+    .invoice-tag .badge {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .invoice-tag .bill-no {
+      font-size: 11px;
+      margin-top: 5px;
+      font-family: monospace;
+      opacity: 0.9;
+    }
+    .bill-body {
+      padding: 24px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .info-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .info-box h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 5px;
+      color: #334155;
+    }
+    .info-row span.label {
+      color: #64748b;
+    }
+    .info-row span.val {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .due-highlight {
+      background: #fef2f2;
+      border: 1.5px solid #f87171;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .due-highlight .due-date-group span.label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #dc2626;
+      text-transform: uppercase;
+      display: block;
+    }
+    .due-highlight .due-date-group span.date-val {
+      font-size: 18px;
+      font-weight: 800;
+      color: #991b1b;
+      font-family: monospace;
+    }
+    .due-highlight .due-amount-group {
+      text-align: right;
+    }
+    .due-highlight .due-amount-group span.label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #dc2626;
+      text-transform: uppercase;
+      display: block;
+    }
+    .due-highlight .due-amount-group span.amount-val {
+      font-size: 24px;
+      font-weight: 900;
+      color: #b91c1c;
+      font-family: monospace;
+    }
+    table.charges-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    table.charges-table th {
+      background: #f1f5f9;
+      text-align: left;
+      font-size: 11px;
+      padding: 8px 12px;
+      color: #475569;
+      font-weight: 700;
+      border-bottom: 1px solid #cbd5e1;
+      text-transform: uppercase;
+    }
+    table.charges-table td {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    table.charges-table tr.total-row td {
+      font-weight: 800;
+      background: #f8fafc;
+      border-top: 1px solid #94a3b8;
+      font-size: 13px;
+      color: #0f172a;
+    }
+    .bill-footer {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: #64748b;
+    }
+    .portal-link {
+      color: #2563eb;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bill-card" id="bill-container">
+    <!-- Header -->
+    <div class="bill-header">
+      <div class="biller-title">
+        <h1>CESC Limited</h1>
+        <p>Calcutta Electricity Supply Corporation • Power Distribution Utility</p>
+      </div>
+      <div class="invoice-tag">
+        <span class="badge">Official Bill</span>
+        <div class="bill-no">Bill # CESC/2026/894021</div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="bill-body">
+      <!-- Consumer & Location Details -->
+      <div class="grid-2">
+        <div class="info-box">
+          <h3>Consumer Details</h3>
+          <div class="info-row">
+            <span class="label">Customer Name:</span>
+            <span class="val">Saheli Mukherjee</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Consumer / Account ID:</span>
+            <span class="val" style="color:#1d4ed8; font-family: monospace;">102938492019</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Phone:</span>
+            <span class="val">+91 9876543210</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Email:</span>
+            <span class="val">saheli56@gmail.com</span>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <h3>Connection Info</h3>
+          <div class="info-row">
+            <span class="label">Category:</span>
+            <span class="val">ELECTRICITY (Domestic)</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Subdivision / Area:</span>
+            <span class="val">Central Kolkata Zone</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Meter Number:</span>
+            <span class="val">MTR-98402-KOL</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Billing Month:</span>
+            <span class="val">September 2026</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outstanding Due Highlight -->
+      <div class="due-highlight">
+        <div class="due-date-group">
+          <span class="label">Payment Due Date</span>
+          <span class="date-val">2026-10-15</span>
+        </div>
+        <div class="due-amount-group">
+          <span class="label">Net Payable Amount</span>
+          <span class="amount-val">₹1,450.00</span>
+        </div>
+      </div>
+
+      <!-- Itemized Breakdown -->
+      <table class="charges-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Units / Rate</th>
+            <th style="text-align: right;">Amount (INR)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Energy Charges (Units: 185 kWh)</td>
+            <td>@ ₹6.50 / Unit</td>
+            <td style="text-align: right; font-family: monospace;">₹1,202.50</td>
+          </tr>
+          <tr>
+            <td>Fixed Demand & Meter Rent</td>
+            <td>Monthly</td>
+            <td style="text-align: right; font-family: monospace;">₹125.00</td>
+          </tr>
+          <tr>
+            <td>Electricity Duty & Govt Taxes (10%)</td>
+            <td>Statutory</td>
+            <td style="text-align: right; font-family: monospace;">₹122.50</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="2">TOTAL PAYABLE AMOUNT DUE:</td>
+            <td style="text-align: right; font-family: monospace; color: #b91c1c;">₹1,450.00</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Footer & Portal Reference -->
+      <div class="bill-footer">
+        <div>
+          Pay Online at Portal: <a class="portal-link" href="https://www.cesc.co.in">https://www.cesc.co.in</a>
+        </div>
+        <div>
+          Auto-generated for DIFM Agent Automated Verification
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

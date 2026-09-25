@@ -15,7 +15,9 @@ import type {
   ProfileIconType,
   ProfileColor,
   AppAccentColor,
-  ExecutionStepDetail
+  ExecutionStepDetail,
+  BillExtractResult,
+  BillingCycle
 } from "@difm/shared";
 import {
   LightningIcon,
@@ -60,7 +62,10 @@ import {
   GearIcon,
   PaletteIcon,
   DotsThreeVerticalIcon,
-  SlidersIcon
+  SlidersIcon,
+  UploadSimpleIcon,
+  ScanIcon,
+  FileArrowUpIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -604,7 +609,9 @@ export function App() {
   // Biller & Profile Details
   const [billerProvider, setBillerProvider] = useState("");
   const [billerType, setBillerType] = useState<TaskCategory>("GENERAL");
+  const [billerBillingCycle, setBillerBillingCycle] = useState<BillingCycle>("MONTHLY");
   const [billerConsumerNo, setBillerConsumerNo] = useState("");
+  const [billerAmount, setBillerAmount] = useState("");
   const [billerSubdivision, setBillerSubdivision] = useState("");
   const [billerPortalUrl, setBillerPortalUrl] = useState("");
   const [billerFirstName, setBillerFirstName] = useState(() => {
@@ -644,6 +651,12 @@ export function App() {
   });
   const [billerInstructions, setBillerInstructions] = useState("");
 
+  // Bill Document Drag & Drop / Paste Extraction State
+  const [isExtractingBill, setIsExtractingBill] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractSuccess, setExtractSuccess] = useState<string | null>(null);
+  const [isDraggingBill, setIsDraggingBill] = useState(false);
+
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -655,11 +668,13 @@ export function App() {
   const [editTitle, setEditTitle] = useState("");
   const [editPriority, setEditPriority] = useState<TaskPriority>("MEDIUM");
   const [editCategory, setEditCategory] = useState<TaskCategory>("GENERAL");
+  const [editBillingCycle, setEditBillingCycle] = useState<BillingCycle>("MONTHLY");
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editProfileId, setEditProfileId] = useState<string>("");
   const [editProvider, setEditProvider] = useState("");
   const [editConsumerNo, setEditConsumerNo] = useState("");
+  const [editAmount, setEditAmount] = useState("");
   const [editSubdivision, setEditSubdivision] = useState("");
   const [editPortalUrl, setEditPortalUrl] = useState("");
   const [editFirstName, setEditFirstName] = useState("");
@@ -1507,6 +1522,33 @@ export function App() {
     setLogs((prev) => [...prev, approved ? "Action approved by user." : "Action rejected by user."]);
   };
 
+  const handleStopTask = async () => {
+    setTaskState("CANCELLED");
+    setApprovalPrompt(null);
+    setSecurityChallenge(null);
+    setLogs((prev) => [...prev, "Task execution terminated by user."]);
+
+    const durationMs = Date.now() - executionStartTimeRef.current;
+    const finalSteps = [...liveExecutionStepsRef.current];
+
+    if (executingPendingTaskIdRef.current) {
+      try {
+        await fetch(`http://127.0.0.1:3001/pending-tasks/${executingPendingTaskIdRef.current}/record-run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "CANCELLED",
+            durationMs,
+            error: "Task terminated by user",
+            stepsCount: finalSteps.length,
+            steps: finalSteps
+          })
+        });
+      } catch {}
+      fetchPendingTasks();
+    }
+  };
+
   const handleResumeAfterChallenge = async () => {
     if (!taskId) return;
     setSecurityChallenge(null);
@@ -1546,11 +1588,13 @@ export function App() {
     setEditTitle(task.title || "");
     setEditPriority(task.priority || "MEDIUM");
     setEditCategory(task.category || "GENERAL");
+    setEditBillingCycle(task.billerInfo?.billingCycle || "MONTHLY");
     setEditDueDate(task.dueDate || "");
     setEditNotes(task.notes || "");
     setEditPortalUrl(task.billerInfo?.portalUrl || task.targetUrl || "");
     setEditProvider(task.billerInfo?.providerName || "");
     setEditConsumerNo(task.billerInfo?.consumerNumber || "");
+    setEditAmount(task.billerInfo?.amount || "");
     setEditSubdivision(task.billerInfo?.subdivision || "");
     setEditFirstName(
       task.billerInfo?.firstName ||
@@ -1591,7 +1635,9 @@ export function App() {
       const billerInfo = {
         providerName: editProvider.trim() || undefined,
         billType: editCategory,
+        billingCycle: editBillingCycle,
         consumerNumber: editConsumerNo.trim() || undefined,
+        amount: editAmount.trim() || undefined,
         subdivision: editSubdivision.trim() || undefined,
         portalUrl: editPortalUrl.trim() || undefined,
         firstName: editFirstName.trim() || undefined,
@@ -1656,7 +1702,9 @@ export function App() {
         ? {
             providerName: billerProvider.trim() || undefined,
             billType: billerType,
+            billingCycle: billerBillingCycle,
             consumerNumber: billerConsumerNo.trim() || undefined,
+            amount: billerAmount.trim() || undefined,
             subdivision: billerSubdivision.trim() || undefined,
             portalUrl: billerPortalUrl.trim() || undefined,
             firstName: billerFirstName.trim() || undefined,
@@ -1706,6 +1754,7 @@ export function App() {
       setNewTaskNotes("");
       setBillerProvider("");
       setBillerConsumerNo("");
+      setBillerAmount("");
       setBillerSubdivision("");
       setBillerPortalUrl("");
       setBillerInstructions("");
@@ -1766,7 +1815,19 @@ export function App() {
 
       if (task.billerInfo?.providerName) parts.push(`Site/Provider: ${task.billerInfo.providerName}`);
       if (task.billerInfo?.consumerNumber) parts.push(`Account/Consumer ID: ${task.billerInfo.consumerNumber}`);
+      if (task.billerInfo?.amount) parts.push(`Bill Amount: ${task.billerInfo.amount}`);
       if (task.billerInfo?.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
+      if (task.billerInfo?.billingCycle) {
+        const cycleLabels: Record<BillingCycle, string> = {
+          MONTHLY: "Monthly Bill",
+          QUARTERLY: "Quarterly Bill",
+          YEARLY: "Yearly / Annual Bill",
+          ADVANCE: "Advance Payment",
+          ONE_TIME: "One-Time Bill",
+          CUSTOM: "Custom Timeline"
+        };
+        parts.push(`Billing Timeline / Option: ${cycleLabels[task.billerInfo.billingCycle] || task.billerInfo.billingCycle}`);
+      }
       if (task.billerInfo?.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
       if (task.notes) parts.push(`Notes: ${task.notes}`);
 
@@ -1780,9 +1841,10 @@ export function App() {
           ", "
         )}]. Clear and override any demo or sample values with these user values.`;
       } else {
-        formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()} bill for ${
+        const cycleTag = task.billerInfo?.billingCycle ? ` (${task.billerInfo.billingCycle.toLowerCase()} timeline)` : "";
+        formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()}${cycleTag} bill for ${
           task.billerInfo.providerName || task.title
-        }. Details: ${parts.join(" | ")}. Stop and request user confirmation before final payment/card submission.`;
+        }. Details: ${parts.join(" | ")}. Select the payment link matching this billing cycle (${task.billerInfo.billingCycle || "MONTHLY"}). Stop and request user confirmation before final payment/card submission.`;
       }
     }
 
@@ -1917,10 +1979,155 @@ export function App() {
     localStorage.setItem("difm_theme_accent", newAccent);
   };
 
+  const processBillFile = async (file: File) => {
+    setIsExtractingBill(true);
+    setExtractError(null);
+    setExtractSuccess(null);
+
+    try {
+      let textContent = "";
+      let imageBase64: string | undefined = undefined;
+      const isImage = file.type.startsWith("image/");
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+      if (isImage) {
+        imageBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } else if (isPdf || file.type.includes("text")) {
+        // Read text content
+        textContent = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string) || "");
+          reader.onerror = () => resolve("");
+          reader.readAsText(file);
+        });
+      }
+
+      const res = await fetch("http://127.0.0.1:3001/extract-bill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: textContent || undefined,
+          imageBase64: imageBase64 || undefined,
+          mimeType: file.type || (isPdf ? "application/pdf" : "image/png"),
+          filename: file.name
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+
+      const data = (await res.json()) as { extracted: BillExtractResult };
+      const ext = data.extracted;
+
+      if (!ext) {
+        throw new Error("Could not parse bill data from file.");
+      }
+
+      // Populate form fields
+      setIsCreateOpen(true);
+      setShowBillerDetails(true);
+
+      const billerTitle = ext.billerName
+        ? `Pay ${ext.billerName}${ext.dueAmount ? ` (${ext.dueAmount})` : ""}`
+        : `Bill Payment - ${file.name.replace(/\.[^/.]+$/, "")}`;
+
+      setNewTaskTitle(billerTitle);
+      if (ext.dueDate) setNewTaskDueDate(ext.dueDate);
+      if (ext.billerName) setBillerProvider(ext.billerName);
+      if (ext.consumerNumber) setBillerConsumerNo(ext.consumerNumber);
+      if (ext.dueAmount) setBillerAmount(ext.dueAmount);
+      if (ext.category) setBillerType(ext.category);
+      if (ext.billingCycle) setBillerBillingCycle(ext.billingCycle);
+      if (ext.portalUrl) setBillerPortalUrl(ext.portalUrl);
+      if (ext.customerName) {
+        const parts = ext.customerName.split(" ");
+        setBillerFirstName(parts[0] || "");
+        setBillerLastName(parts.slice(1).join(" ") || "");
+      }
+      if (ext.notes) {
+        setNewTaskNotes(ext.notes);
+      } else {
+        setNewTaskNotes(`Auto-extracted from ${file.name}`);
+      }
+
+      const formulatedGoalText = `Pay ${ext.category ? ext.category.toLowerCase() : "electricity"} ${(ext.billingCycle || "monthly").toLowerCase()} bill for ${ext.billerName || "CESC"}. Details: Customer Name: ${ext.customerName || billerFirstName || ""} | Account/Consumer ID: ${ext.consumerNumber || ""} | Bill Amount: ${ext.dueAmount || ""} | Due Date: ${ext.dueDate || ""} | Billing Timeline: ${ext.billingCycle || "MONTHLY"} Bill. Select the payment link matching this billing cycle (${ext.billingCycle || "MONTHLY"}). Stop and request user confirmation before final payment/card submission.`;
+      setGoal(formulatedGoalText);
+
+      setExtractSuccess(
+        `Extracted ${ext.billerName || "Bill"}: Consumer #${ext.consumerNumber || "N/A"} | Amt: ${ext.dueAmount || "N/A"} | Due: ${ext.dueDate || "N/A"}`
+      );
+    } catch (err: unknown) {
+      let msg = err instanceof Error ? err.message : "Failed to extract bill details";
+      if (msg === "Failed to fetch" || msg.includes("fetch")) {
+        msg = "Cannot connect to server. Please ensure `pnpm dev` is running.";
+      }
+      setExtractError(msg);
+    } finally {
+      setIsExtractingBill(false);
+    }
+  };
+
+  const handleBillFileUpload = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (file) {
+      processBillFile(file);
+      target.value = "";
+    }
+  };
+
+  const handleBillDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDraggingBill(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      processBillFile(file);
+    }
+  };
+
+  const handleBillPaste = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/") || items[i].type.includes("pdf")) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            processBillFile(file);
+            break;
+          }
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    const onGlobalPaste = (e: ClipboardEvent) => {
+      // Intercept image pastes across any tab or input
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.startsWith("image/") || items[i].type.includes("pdf")) {
+            handleBillPaste(e);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener("paste", onGlobalPaste);
+    return () => window.removeEventListener("paste", onGlobalPaste);
+  }, []);
+
   return (
     <div
       data-accent={accentColor}
-      class="relative min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-3 sm:p-4 max-w-full selection:bg-indigo-500/30 selection:text-indigo-200"
+      class="relative min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-3 sm:p-4 max-w-full selection:bg-[var(--accent-bg-subtle)] selection:text-[var(--accent-to)]"
     >
       {/* Aceternity ambient glow backdrop */}
       <div class="ambient-glow" />
@@ -2005,7 +2212,7 @@ export function App() {
                                   </span>
                                 </div>
                               </div>
-                              {isSelected && <CheckIcon size={12} class="text-indigo-400 shrink-0 ml-1" />}
+                              {isSelected && <CheckIcon size={12} class="accent-text shrink-0 ml-1" />}
                             </button>
                           );
                         })}
@@ -2014,7 +2221,7 @@ export function App() {
                       <div class="border-t border-white/[0.06] pt-1 px-1 mt-1 space-y-0.5">
                         <button
                           onClick={handleOpenCreateProfile}
-                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-semibold text-indigo-300 hover:bg-indigo-500/10 hover:text-indigo-200 flex items-center gap-1.5 transition"
+                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-semibold accent-text hover:bg-[var(--accent-bg-subtle)] flex items-center gap-1.5 transition"
                         >
                           <PlusIcon size={12} />
                           <span>Create New Identity</span>
@@ -2211,7 +2418,7 @@ export function App() {
               placeholder="e.g., Go to CESC bill portal, fill account 102938492, verify amount, and prepare payment..."
               value={goal}
               onInput={(e) => setGoal((e.target as HTMLTextAreaElement).value)}
-              class="w-full glass-input rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-indigo-500/20 resize-none leading-relaxed"
+              class="w-full glass-input rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-[var(--accent-border)] resize-none leading-relaxed"
             />
 
             {/* Quick Suggestion Pills */}
@@ -2225,30 +2432,65 @@ export function App() {
                 <button
                   key={suggestion}
                   onClick={() => setGoal(suggestion)}
-                  class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-indigo-300 border border-white/[0.05] transition truncate max-w-full"
+                  class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:accent-text border border-white/[0.05] transition truncate max-w-full"
                 >
                   + {suggestion}
                 </button>
               ))}
             </div>
 
-            <button
-              onClick={() => handleStartTask()}
-              disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
-              class="w-full shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
-            >
-              {taskState === "EXECUTING" || taskState === "PLANNING" ? (
-                <>
+            {/* Quick Billing Timeline Chips */}
+            <div class="flex flex-wrap items-center gap-1.5 pt-1 pb-0.5">
+              <span class="text-[10px] text-zinc-500 font-medium">Timeline:</span>
+              {[
+                { id: "MONTHLY", label: "Monthly Bill" },
+                { id: "QUARTERLY", label: "Quarterly Bill" },
+                { id: "YEARLY", label: "Yearly Bill" },
+                { id: "ADVANCE", label: "Advance Payment" }
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => {
+                    const current = goal.trim();
+                    const cleanGoal = current.replace(/\s*\(?(monthly|quarterly|yearly|annual|advance)\s*(bill|timeline|payment)?\)?/gi, "").trim();
+                    setGoal(cleanGoal ? `${cleanGoal} (${opt.label})` : `Pay electricity ${opt.label.toLowerCase()}`);
+                  }}
+                  class="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.08] transition active:scale-95"
+                  title={`Set goal timeline to ${opt.label}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {taskState === "EXECUTING" || taskState === "PLANNING" ? (
+              <div class="flex gap-2">
+                <button
+                  disabled
+                  class="flex-1 shimmer-btn h-9 rounded-lg text-xs font-semibold text-white opacity-90 inline-flex items-center justify-center gap-2 shadow-glow-sm"
+                >
                   <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Agent is executing...</span>
-                </>
-              ) : (
-                <>
-                  <PlayIcon size={13} class="text-white fill-current" />
-                  <span>Execute Goal in Tab</span>
-                </>
-              )}
-            </button>
+                </button>
+                <button
+                  onClick={handleStopTask}
+                  title="Stop and terminate agent execution immediately"
+                  class="px-4 h-9 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/50 active:scale-[0.98] transition-all border border-rose-400/40"
+                >
+                  <div class="w-2.5 h-2.5 rounded-sm bg-white" />
+                  <span>Stop</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleStartTask()}
+                disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
+                class="w-full shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
+              >
+                <PlayIcon size={13} class="text-white fill-current" />
+                <span>Execute Goal in Tab</span>
+              </button>
+            )}
           </div>
 
           {/* Success Banner */}
@@ -2319,18 +2561,19 @@ export function App() {
           )}
 
           {/* Sensitive Action User Approval Card */}
+          {/* Sensitive Action User Approval Card */}
           {approvalPrompt && (
-            <div class="glass-panel bg-indigo-950/50 border-indigo-500/50 rounded-xl p-3.5 shadow-glow-indigo animate-scale-in">
+            <div class="glass-panel accent-bg-subtle border-[var(--accent-border)] rounded-xl p-3.5 shadow-glass animate-scale-in">
               <div class="flex items-start gap-2.5">
-                <ShieldCheckIcon size={20} class="text-indigo-400 shrink-0 mt-0.5" />
+                <ShieldCheckIcon size={20} class="accent-text shrink-0 mt-0.5" />
                 <div class="flex-1 min-w-0">
-                  <h3 class="text-xs font-bold text-indigo-200">Confirmation Required</h3>
+                  <h3 class="text-xs font-bold text-zinc-100">Confirmation Required</h3>
                   <p class="text-xs text-zinc-200 mt-1 font-medium leading-relaxed">{approvalPrompt.summary}</p>
                   <p class="text-[11px] text-zinc-400 mt-0.5">{approvalPrompt.consequences}</p>
                   <div class="mt-3 flex items-center gap-2">
                     <button
                       onClick={() => handleDecision(true)}
-                      class="text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1 rounded-md transition shadow-sm active:scale-95"
+                      class="text-[11px] accent-btn-primary font-semibold px-3 py-1 rounded-md transition shadow-sm active:scale-95"
                     >
                       Approve & Continue
                     </button>
@@ -2358,13 +2601,23 @@ export function App() {
                 <span class="ml-1 text-zinc-300">Execution Logs</span>
               </div>
               <div class="flex items-center gap-1.5">
+                {(taskState === "EXECUTING" || taskState === "PLANNING") && (
+                  <button
+                    onClick={handleStopTask}
+                    class="text-[10px] bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition shadow-sm active:scale-95 font-semibold"
+                    title="Stop Agent Execution"
+                  >
+                    <div class="w-1.5 h-1.5 rounded-xs bg-rose-400" />
+                    <span>Stop</span>
+                  </button>
+                )}
                 {liveExecutionStepsRef.current.length > 0 && (
                   <button
                     onClick={handleOpenLiveReplay}
-                    class="text-[10px] bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition shadow-sm active:scale-95"
+                    class="text-[10px] accent-badge-subtle hover:brightness-110 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition shadow-sm active:scale-95"
                     title="Open Step-by-Step Visual Replay & Inspector"
                   >
-                    <FilmReelIcon size={11} class="text-indigo-300" />
+                    <FilmReelIcon size={11} class="accent-text" />
                     <span>Replay Steps ({liveExecutionStepsRef.current.length})</span>
                   </button>
                 )}
@@ -2410,7 +2663,7 @@ export function App() {
                           : isVerification
                           ? "text-amber-300 bg-amber-950/20 px-1.5 rounded border border-amber-900/30"
                           : isAction
-                          ? "text-indigo-300"
+                          ? "accent-text"
                           : "text-zinc-300"
                       }`}
                     >
@@ -2463,7 +2716,109 @@ export function App() {
 
             {/* Creation Form Accordion Content */}
             {isCreateOpen && (
-              <div class="p-3.5 pt-1 border-t border-white/[0.06] space-y-3 text-xs animate-slide-down">
+              <div class="p-3.5 pt-1 border-t border-white/[0.06] space-y-3 text-xs animate-slide-down max-h-[calc(100vh-210px)] overflow-y-auto overscroll-contain pr-1.5">
+                {/* Drag & Drop / Paste / Upload Bill Document Scanner Area */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingBill(true);
+                  }}
+                  onDragLeave={() => setIsDraggingBill(false)}
+                  onDrop={handleBillDrop}
+                  class={`relative rounded-xl p-3 border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center text-center cursor-pointer ${
+                    isDraggingBill
+                      ? "border-[var(--accent-color)] bg-[var(--accent-bg-subtle)] scale-[1.01]"
+                      : isExtractingBill
+                      ? "border-[var(--accent-border)] bg-zinc-900/80 animate-pulse"
+                      : "border-white/[0.12] hover:border-[var(--accent-border)] bg-zinc-900/40 hover:bg-zinc-900/70"
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,application/pdf"
+                    onChange={handleBillFileUpload}
+                    class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                    disabled={isExtractingBill}
+                  />
+
+                  {isExtractingBill ? (
+                    <div class="flex items-center gap-2 py-1">
+                      <div class="w-4 h-4 border-2 border-white/30 border-t-[var(--accent-color)] rounded-full animate-spin shrink-0" />
+                      <span class="text-xs font-semibold accent-text">
+                        Extracting Biller, Account No, Due Date & Amount...
+                      </span>
+                    </div>
+                  ) : (
+                    <div class="flex items-center gap-2.5 py-0.5">
+                      <div class="w-7 h-7 rounded-lg accent-badge-subtle flex items-center justify-center shrink-0">
+                        <UploadSimpleIcon size={14} class="accent-text" />
+                      </div>
+                      <div class="text-left min-w-0">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs font-semibold text-zinc-100">
+                            Drop, Paste, or Upload Bill / Invoice / Slip
+                          </span>
+                          <span class="text-[9px] px-1.5 py-0.2 rounded bg-white/[0.08] text-zinc-400 font-mono">
+                            PDF / PNG / JPG
+                          </span>
+                        </div>
+                        <p class="text-[10px] text-zinc-400">
+                          Auto-extracts Biller Name, Consumer A/C No, Due Date, and Amount
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bill Extraction Success / Error Feedback */}
+                {extractSuccess && (
+                  <div class="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex flex-col gap-2.5 animate-fade-in text-[11px] shadow-glow-emerald">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                        <CheckCircleIcon size={14} class="text-emerald-400 shrink-0" />
+                        <span>{extractSuccess}</span>
+                      </div>
+                      <button
+                        onClick={() => setExtractSuccess(null)}
+                        class="text-zinc-400 hover:text-white p-0.5"
+                      >
+                        <XIcon size={12} />
+                      </button>
+                    </div>
+
+                    <div class="flex items-center gap-2 pt-1 border-t border-emerald-500/20">
+                      <button
+                        onClick={() => {
+                          const goalPrompt = `Pay ${billerType.toLowerCase()} ${billerBillingCycle.toLowerCase()} bill for ${billerProvider || newTaskTitle}. Details: First Name: ${billerFirstName} | Last Name: ${billerLastName} | Account/Consumer ID: ${billerConsumerNo} | Bill Amount: ${billerAmount} | Billing Timeline: ${billerBillingCycle} Bill. Select the payment link matching this billing cycle (${billerBillingCycle}). Stop and request user confirmation before final payment/card submission.`;
+                          setActiveTab("EXECUTE");
+                          setGoal(goalPrompt);
+                          handleStartTask(goalPrompt, billerPortalUrl || undefined);
+                        }}
+                        class="shimmer-btn text-white text-xs font-bold px-3 py-1 rounded-lg inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <PlayIcon size={10} class="fill-current" />
+                        <span>⚡ Run Task Now</span>
+                      </button>
+                      <span class="text-[10px] text-emerald-200/70">Or review details below and click Save.</span>
+                    </div>
+                  </div>
+                )}
+
+                {extractError && (
+                  <div class="p-2 rounded-lg bg-rose-950/40 border border-rose-500/30 flex items-center justify-between animate-fade-in text-[10px]">
+                    <div class="flex items-center gap-1.5 text-rose-300 font-medium">
+                      <WarningCircleIcon size={12} class="text-rose-400 shrink-0" />
+                      <span>{extractError}</span>
+                    </div>
+                    <button
+                      onClick={() => setExtractError(null)}
+                      class="text-zinc-400 hover:text-white p-0.5"
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  </div>
+                )}
+
                 {/* Title & Priority Row */}
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">
@@ -2626,16 +2981,16 @@ export function App() {
                           </div>
                         )}
 
-                        <div class="bg-indigo-950/30 p-2 rounded-lg border border-indigo-500/20 flex items-center justify-between">
+                        <div class="bg-[var(--accent-bg-subtle)] p-2 rounded-lg border border-[var(--accent-border)] flex items-center justify-between">
                           <div class="flex flex-col">
-                            <span class="text-[11px] font-semibold text-indigo-300">Auto-Execute with Agent</span>
+                            <span class="text-[11px] font-semibold accent-text">Auto-Execute with Agent</span>
                             <span class="text-[10px] text-zinc-400">Launch autonomous browser run at scheduled time</span>
                           </div>
                           <input
                             type="checkbox"
                             checked={scheduleAutoExecute}
                             onChange={(e) => setScheduleAutoExecute((e.target as HTMLInputElement).checked)}
-                            class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                            class="rounded bg-zinc-900 border-zinc-700 accent-[var(--accent-color)] focus:ring-0 cursor-pointer"
                           />
                         </div>
                       </>
@@ -2646,7 +3001,7 @@ export function App() {
                 {/* Profile Details Drawer */}
                 {showBillerDetails && (
                   <div class="glass-panel rounded-xl p-3 space-y-2.5 border-[var(--accent-border)] animate-fade-in">
-                    <div class="text-[11px] font-semibold accent-text flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                    <div class="text-[11px] font-semibold accent-text flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
                       <div class="flex items-center gap-1.5">
                         <UserIcon size={13} />
                         <span>User Profile & Autofill Credentials</span>
@@ -2709,15 +3064,31 @@ export function App() {
                         </select>
                       </div>
                       <div>
-                        <label class="text-[10px] text-zinc-400 block mb-1">Site / Provider</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Google Demo, CESC"
-                          value={billerProvider}
-                          onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
-                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
-                        />
+                        <label class="text-[10px] text-zinc-400 block mb-1">Billing Timeline</label>
+                        <select
+                          value={billerBillingCycle}
+                          onChange={(e) => setBillerBillingCycle((e.target as HTMLSelectElement).value as BillingCycle)}
+                          class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                        >
+                          <option value="MONTHLY">Monthly Bill</option>
+                          <option value="QUARTERLY">Quarterly Bill</option>
+                          <option value="YEARLY">Yearly / Annual Bill</option>
+                          <option value="ADVANCE">Advance Payment</option>
+                          <option value="ONE_TIME">One-Time Payment</option>
+                          <option value="CUSTOM">Custom Timeline</option>
+                        </select>
                       </div>
+                    </div>
+
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1">Site / Provider</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Google Demo, CESC"
+                        value={billerProvider}
+                        onInput={(e) => setBillerProvider((e.target as HTMLInputElement).value)}
+                        class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                      />
                     </div>
 
                     <div>
@@ -2790,6 +3161,19 @@ export function App() {
                         />
                       </div>
                       <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Due Amount</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. ₹1,450.00 / $45"
+                          value={billerAmount}
+                          onInput={(e) => setBillerAmount((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
                         <label class="text-[10px] text-zinc-400 block mb-1">Subdivision / Area</label>
                         <input
                           type="text"
@@ -2799,17 +3183,16 @@ export function App() {
                           class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
                         />
                       </div>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-1">Action Instructions</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Fill form and submit"
-                        value={billerInstructions}
-                        onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
-                        class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
-                      />
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1">Action Instructions</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Fill form and submit"
+                          value={billerInstructions}
+                          onInput={(e) => setBillerInstructions((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 placeholder-zinc-500"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3012,19 +3395,41 @@ export function App() {
                   {/* Profile / Target Details Summary */}
                   {t.billerInfo && (
                     <div class="bg-zinc-950/60 border border-white/[0.05] rounded-lg p-2 mb-2 text-[11px] space-y-1">
-                      <div class="flex items-center justify-between text-indigo-300 font-medium">
+                      <div class="flex items-center justify-between accent-text font-medium">
                         <span class="inline-flex items-center gap-1 truncate">
-                          <BuildingsIcon size={11} class="text-indigo-400 shrink-0" />
+                          <BuildingsIcon size={11} class="accent-text shrink-0" />
                           {t.billerInfo.providerName || t.billerInfo.billType}
                         </span>
-                        {t.billerInfo.consumerNumber && (
-                          <span class="text-[10px] text-zinc-400 font-mono">#{t.billerInfo.consumerNumber}</span>
-                        )}
+                        <div class="flex items-center gap-1.5 shrink-0">
+                          {t.billerInfo.billingCycle && (
+                            <span class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium">
+                              {t.billerInfo.billingCycle === "MONTHLY"
+                                ? "Monthly"
+                                : t.billerInfo.billingCycle === "QUARTERLY"
+                                ? "Quarterly"
+                                : t.billerInfo.billingCycle === "YEARLY"
+                                ? "Yearly"
+                                : t.billerInfo.billingCycle === "ADVANCE"
+                                ? "Advance"
+                                : t.billerInfo.billingCycle === "ONE_TIME"
+                                ? "One-time"
+                                : t.billerInfo.billingCycle}
+                            </span>
+                          )}
+                          {t.billerInfo.amount && (
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold font-mono">
+                              {t.billerInfo.amount}
+                            </span>
+                          )}
+                          {t.billerInfo.consumerNumber && (
+                            <span class="text-[10px] text-zinc-400 font-mono">#{t.billerInfo.consumerNumber}</span>
+                          )}
+                        </div>
                       </div>
                       {t.billerInfo.portalUrl && (
-                        <div class="truncate text-[10px] text-indigo-400 flex items-center gap-1">
+                        <div class="truncate text-[10px] accent-text flex items-center gap-1">
                           <LinkSimpleIcon size={10} class="shrink-0" />
-                          <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline truncate">
+                          <a href={t.billerInfo.portalUrl} target="_blank" rel="noreferrer" class="underline truncate hover:brightness-125">
                             {t.billerInfo.portalUrl}
                           </a>
                         </div>
@@ -3033,19 +3438,19 @@ export function App() {
                         <div class="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-zinc-400 pt-1 border-t border-white/[0.04]">
                           {(t.billerInfo.firstName || t.billerInfo.lastName || t.billerInfo.customerName) && (
                             <span class="inline-flex items-center gap-1 text-zinc-200">
-                              <UserIcon size={10} class="text-indigo-400" />
+                              <UserIcon size={10} class="accent-text" />
                               {[t.billerInfo.firstName, t.billerInfo.lastName].filter(Boolean).join(" ") || t.billerInfo.customerName}
                             </span>
                           )}
                           {t.billerInfo.phoneNumber && (
                             <span class="inline-flex items-center gap-1 text-zinc-300">
-                              <PhoneIcon size={10} class="text-indigo-400" />
+                              <PhoneIcon size={10} class="accent-text" />
                               {t.billerInfo.phoneNumber}
                             </span>
                           )}
                           {t.billerInfo.emailAddress && (
                             <span class="inline-flex items-center gap-1 text-zinc-300 truncate max-w-[130px]">
-                              <EnvelopeSimpleIcon size={10} class="text-indigo-400" />
+                              <EnvelopeSimpleIcon size={10} class="accent-text" />
                               {t.billerInfo.emailAddress}
                             </span>
                           )}
@@ -3067,7 +3472,7 @@ export function App() {
                             setEditingNotesId(t.id);
                             setCurrentNoteText(t.notes || "");
                           }}
-                          class="text-[9px] text-zinc-400 hover:text-indigo-300 inline-flex items-center gap-0.5 transition"
+                          class="text-[9px] text-zinc-400 hover:text-white inline-flex items-center gap-0.5 transition"
                         >
                           <PencilSimpleIcon size={10} />
                           Edit
@@ -3092,7 +3497,7 @@ export function App() {
                           </button>
                           <button
                             onClick={() => handleSaveNotes(t.id)}
-                            class="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-md font-medium"
+                            class="text-[10px] accent-btn-primary px-2 py-0.5 rounded-md font-medium"
                           >
                             Save Note
                           </button>
@@ -3122,7 +3527,7 @@ export function App() {
                       </button>
 
                       {expandedHistoryTaskId === t.id && (
-                        <div class="mt-1.5 space-y-1 pl-1.5 border-l-2 border-indigo-500/40 animate-fade-in">
+                        <div class="mt-1.5 space-y-1 pl-1.5 border-l-2 border-[var(--accent-color)] animate-fade-in">
                           {t.executionHistory.map((run) => (
                             <div key={run.id} class="text-[10px] bg-zinc-950/80 p-2 rounded-md space-y-0.5 border border-white/[0.04]">
                               <div class="flex items-center justify-between">
@@ -3147,7 +3552,7 @@ export function App() {
                                 </div>
                                 <button
                                   onClick={() => handleOpenHistoricalReplay(t.title, run)}
-                                  class="text-[9px] bg-indigo-600/25 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 px-2 py-0.5 rounded inline-flex items-center gap-1 transition"
+                                  class="text-[9px] accent-badge-subtle hover:brightness-110 px-2 py-0.5 rounded inline-flex items-center gap-1 transition"
                                 >
                                   <FilmReelIcon size={10} />
                                   <span>Replay & Inspect</span>
@@ -3168,11 +3573,11 @@ export function App() {
 
       {/* Full Task & Schedule Edit Modal Dialog */}
       {editingTask && (
-        <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto animate-fade-in">
-          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-indigo-500/30 animate-scale-in">
+        <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in overscroll-none">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-[var(--accent-border)] animate-scale-in">
             {/* Modal Header */}
-            <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90">
-              <div class="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <div class="flex items-center gap-2 accent-text font-bold text-xs">
                 <PencilSimpleIcon size={15} />
                 <span>Edit Task, Profile & Schedule</span>
               </div>
@@ -3185,7 +3590,7 @@ export function App() {
             </div>
 
             {/* Modal Body */}
-            <div class="p-4 overflow-y-auto space-y-3.5 text-xs bg-zinc-950/70">
+            <div class="p-4 overflow-y-auto overscroll-contain space-y-3.5 text-xs bg-zinc-950/70 flex-1 min-h-0">
               {/* Task Title */}
               <div>
                 <label class="text-[10px] text-zinc-400 block mb-1 font-semibold uppercase tracking-wider">
@@ -3199,8 +3604,8 @@ export function App() {
                 />
               </div>
 
-              {/* Priority, Category & Due Date */}
-              <div class="grid grid-cols-3 gap-2">
+              {/* Priority, Category, Billing Timeline & Due Date */}
+              <div class="grid grid-cols-2 gap-2">
                 <div>
                   <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Priority</label>
                   <select
@@ -3235,6 +3640,22 @@ export function App() {
                 </div>
 
                 <div>
+                  <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Billing Timeline</label>
+                  <select
+                    value={editBillingCycle}
+                    onChange={(e) => setEditBillingCycle((e.target as HTMLSelectElement).value as BillingCycle)}
+                    class="w-full glass-input rounded-lg px-2 h-8 text-xs text-zinc-200"
+                  >
+                    <option value="MONTHLY">Monthly Bill</option>
+                    <option value="QUARTERLY">Quarterly Bill</option>
+                    <option value="YEARLY">Yearly / Annual Bill</option>
+                    <option value="ADVANCE">Advance Payment</option>
+                    <option value="ONE_TIME">One-Time Payment</option>
+                    <option value="CUSTOM">Custom Timeline</option>
+                  </select>
+                </div>
+
+                <div>
                   <label class="text-[10px] text-zinc-400 block mb-1 font-medium truncate">Due Date</label>
                   <input
                     type="date"
@@ -3258,8 +3679,8 @@ export function App() {
               </div>
 
               {/* User Profile & Form Details Group */}
-              <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
-                <div class="text-[11px] font-semibold text-indigo-300 flex items-center justify-between pb-1 border-b border-white/[0.06]">
+              <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08] max-h-[300px] overflow-y-auto overscroll-contain">
+                <div class="text-[11px] font-semibold accent-text flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
                   <div class="flex items-center gap-1.5">
                     <UserIcon size={13} />
                     <span>User Profile & Biller Info</span>
@@ -3271,7 +3692,7 @@ export function App() {
                       setIsCreatingNewProfile(false);
                       setIsProfileVaultModalOpen(true);
                     }}
-                    class="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
+                    class="text-[10px] accent-text hover:brightness-125 font-medium inline-flex items-center gap-1"
                   >
                     <IdentificationCardIcon size={11} />
                     <span>Vault</span>
@@ -3280,8 +3701,8 @@ export function App() {
 
                 {/* Identity Preset Selector in Edit Modal */}
                 {profiles.length > 0 && (
-                  <div class="bg-indigo-950/25 p-2 rounded-lg border border-indigo-500/20">
-                    <label class="text-[10px] text-indigo-300 block mb-1 font-semibold flex items-center gap-1">
+                  <div class="bg-[var(--accent-bg-subtle)] p-2 rounded-lg border border-[var(--accent-border)]">
+                    <label class="text-[10px] accent-text block mb-1 font-semibold flex items-center gap-1">
                       <SparkleIcon size={11} />
                       <span>Autofill from Identity Vault Preset</span>
                     </label>
@@ -3350,7 +3771,7 @@ export function App() {
                 </div>
 
                 {/* Site/Provider & Account No */}
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-3 gap-2">
                   <div>
                     <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Site / Provider</label>
                     <input
@@ -3362,13 +3783,23 @@ export function App() {
                     />
                   </div>
                   <div>
-                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Account / Consumer ID</label>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Account / ID No</label>
                     <input
                       type="text"
                       placeholder="e.g. 102938492"
                       value={editConsumerNo}
                       onInput={(e) => setEditConsumerNo((e.target as HTMLInputElement).value)}
                       class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Due Amount</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ₹1,450.00"
+                      value={editAmount}
+                      onInput={(e) => setEditAmount((e.target as HTMLInputElement).value)}
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 font-mono"
                     />
                   </div>
                 </div>
@@ -3401,7 +3832,7 @@ export function App() {
               {/* Schedule Configuration Group */}
               <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
                 <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
-                  <div class="flex items-center gap-1.5 text-indigo-300 font-semibold text-[11px]">
+                  <div class="flex items-center gap-1.5 accent-text font-semibold text-[11px]">
                     <RepeatIcon size={13} />
                     <span>Scheduling & Auto-Execution</span>
                   </div>
@@ -3410,7 +3841,7 @@ export function App() {
                       type="checkbox"
                       checked={editScheduleEnabled}
                       onChange={(e) => setEditScheduleEnabled((e.target as HTMLInputElement).checked)}
-                      class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                      class="rounded bg-zinc-900 border-zinc-700 accent-[var(--accent-color)] focus:ring-0 cursor-pointer"
                     />
                     <span>Enable Schedule</span>
                   </label>
@@ -3491,16 +3922,16 @@ export function App() {
                       </div>
                     )}
 
-                    <div class="bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-500/20 flex items-center justify-between">
+                    <div class="bg-[var(--accent-bg-subtle)] p-2.5 rounded-lg border border-[var(--accent-border)] flex items-center justify-between">
                       <div class="flex flex-col">
-                        <span class="text-[11px] font-semibold text-indigo-300">Auto-Execute with Agent</span>
+                        <span class="text-[11px] font-semibold accent-text">Auto-Execute with Agent</span>
                         <span class="text-[10px] text-zinc-400">Launch browser execution automatically</span>
                       </div>
                       <input
                         type="checkbox"
                         checked={editScheduleAutoExecute}
                         onChange={(e) => setEditScheduleAutoExecute((e.target as HTMLInputElement).checked)}
-                        class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                        class="rounded bg-zinc-900 border-zinc-700 accent-[var(--accent-color)] focus:ring-0 cursor-pointer"
                       />
                     </div>
                   </>
@@ -3542,11 +3973,11 @@ export function App() {
 
       {/* Multi-Profile Identity Vault Modal */}
       {isProfileVaultModalOpen && (
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto animate-fade-in">
-          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden border border-indigo-500/30 animate-scale-in">
+        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in overscroll-none">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-[var(--accent-border)] animate-scale-in">
             {/* Modal Header */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
-              <div class="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+              <div class="flex items-center gap-2 accent-text font-bold text-xs">
                 <IdentificationCardIcon size={16} />
                 <span>Multi-Profile Identity Vault</span>
               </div>
@@ -3562,8 +3993,8 @@ export function App() {
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div class="p-4 overflow-y-auto space-y-4 text-xs bg-zinc-950/70 flex-1">
+            {/* Modal Body with independent scrolling */}
+            <div class="p-4 overflow-y-auto overscroll-contain space-y-4 text-xs bg-zinc-950/70 flex-1 min-h-0">
               {editingProfile || isCreatingNewProfile ? (
                 /* Profile Editor Form View */
                 <div class="space-y-3.5 animate-fade-in">
@@ -3573,7 +4004,7 @@ export function App() {
                         setEditingProfile(null);
                         setIsCreatingNewProfile(false);
                       }}
-                      class="text-xs text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1 font-semibold"
+                      class="text-xs accent-text hover:brightness-125 inline-flex items-center gap-1 font-semibold"
                     >
                       <span>← Back to Identities</span>
                     </button>
@@ -3608,7 +4039,7 @@ export function App() {
                             onClick={() => setProfIcon(ic)}
                             class={`w-7 h-7 rounded-lg flex items-center justify-center border transition ${
                               profIcon === ic
-                                ? "bg-indigo-600 text-white border-indigo-400 shadow-glow-sm"
+                                ? "accent-btn-primary shadow-glow-sm"
                                 : "bg-zinc-900 text-zinc-400 border-white/[0.08] hover:text-white"
                             }`}
                           >
@@ -3644,7 +4075,7 @@ export function App() {
 
                   {/* Personal Credentials */}
                   <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
-                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                    <div class="text-[11px] font-semibold accent-text flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
                       <UserIcon size={13} />
                       <span>Personal Contact Information</span>
                     </div>
@@ -3698,7 +4129,7 @@ export function App() {
 
                   {/* Address Details */}
                   <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
-                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                    <div class="text-[11px] font-semibold accent-text flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
                       <HouseIcon size={13} />
                       <span>Address & Location (Optional)</span>
                     </div>
@@ -3763,7 +4194,7 @@ export function App() {
 
                   {/* Business & Tax Details */}
                   <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
-                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                    <div class="text-[11px] font-semibold accent-text flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
                       <BriefcaseIcon size={13} />
                       <span>Business & Tax Info (Optional)</span>
                     </div>
@@ -3818,14 +4249,14 @@ export function App() {
                   {/* Custom Key-Value Attributes */}
                   <div class="glass-panel rounded-xl p-3 space-y-2 border-white/[0.08]">
                     <div class="flex items-center justify-between pb-1 border-b border-white/[0.06]">
-                      <span class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
+                      <span class="text-[11px] font-semibold accent-text flex items-center gap-1.5">
                         <TagIcon size={13} />
                         <span>Custom Form Attributes</span>
                       </span>
                       <button
                         type="button"
                         onClick={() => setProfCustomAttrs([...profCustomAttrs, { key: "", value: "" }])}
-                        class="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1"
+                        class="text-[10px] accent-text hover:brightness-125 font-semibold inline-flex items-center gap-1"
                       >
                         <PlusIcon size={11} />
                         <span>Add Attribute</span>
@@ -3960,7 +4391,7 @@ export function App() {
                                     </span>
                                   )}
                                   {isSelected && (
-                                    <span class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+                                    <span class="text-[9px] px-1.5 py-0.2 rounded accent-badge-subtle font-semibold">
                                       Active
                                     </span>
                                   )}
@@ -3976,7 +4407,7 @@ export function App() {
                               {!isSelected && (
                                 <button
                                   onClick={() => handleSelectActiveProfile(prof.id)}
-                                  class="text-[10px] bg-zinc-800 hover:bg-indigo-600 text-zinc-300 hover:text-white px-2 py-0.5 rounded-md transition font-medium"
+                                  class="text-[10px] bg-zinc-800 hover:accent-btn-primary text-zinc-300 hover:text-white px-2 py-0.5 rounded-md transition font-medium"
                                 >
                                   Use Now
                                 </button>
@@ -3992,7 +4423,7 @@ export function App() {
                               )}
                               <button
                                 onClick={() => handleOpenEditProfile(prof)}
-                                class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
+                                class="text-zinc-400 hover:accent-text p-1 rounded hover:bg-white/[0.05] transition"
                                 title="Edit Identity Profile"
                               >
                                 <PencilSimpleIcon size={13} />
@@ -4014,13 +4445,13 @@ export function App() {
                             <div class="flex flex-wrap gap-x-3 gap-y-0.5">
                               {prof.email && (
                                 <span class="inline-flex items-center gap-1 text-zinc-300">
-                                  <EnvelopeSimpleIcon size={10} class="text-indigo-400" />
+                                  <EnvelopeSimpleIcon size={10} class="accent-text" />
                                   <span class="truncate max-w-[150px]">{prof.email}</span>
                                 </span>
                               )}
                               {prof.phone && (
                                 <span class="inline-flex items-center gap-1 text-zinc-300">
-                                  <PhoneIcon size={10} class="text-indigo-400" />
+                                  <PhoneIcon size={10} class="accent-text" />
                                   <span>{prof.phone}</span>
                                 </span>
                               )}
@@ -4028,7 +4459,7 @@ export function App() {
 
                             {(prof.address?.city || prof.address?.state || prof.address?.postalCode) && (
                               <div class="flex items-center gap-1 text-zinc-400 truncate">
-                                <HouseIcon size={10} class="text-indigo-400 shrink-0" />
+                                <HouseIcon size={10} class="accent-text shrink-0" />
                                 <span class="truncate">
                                   {[prof.address.street, prof.address.city, prof.address.state, prof.address.postalCode]
                                     .filter(Boolean)
@@ -4039,7 +4470,7 @@ export function App() {
 
                             {(prof.business?.companyName || prof.business?.taxIdOrGst) && (
                               <div class="flex items-center gap-2 text-zinc-400 truncate pt-0.5 border-t border-white/[0.04]">
-                                <BriefcaseIcon size={10} class="text-indigo-400 shrink-0" />
+                                <BriefcaseIcon size={10} class="accent-text shrink-0" />
                                 <span class="truncate">
                                   {prof.business.companyName}
                                   {prof.business.taxIdOrGst ? ` (GST: ${prof.business.taxIdOrGst})` : ""}
@@ -4075,11 +4506,11 @@ export function App() {
       {/* Visual Execution Replay & Step Inspector Modal */}
       {isReplayModalOpen && (
         <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 overflow-hidden animate-fade-in">
-          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg h-[92vh] flex flex-col overflow-hidden border border-indigo-500/40 bg-zinc-950/95 animate-scale-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg h-[92vh] flex flex-col overflow-hidden border border-[var(--accent-border)] bg-zinc-950/95 animate-scale-in">
             {/* Replay Header */}
             <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
               <div class="flex items-center gap-2 min-w-0">
-                <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-glow-sm shrink-0">
+                <div class="w-6 h-6 rounded-lg accent-gradient-bg flex items-center justify-center text-white shadow-glow-sm shrink-0">
                   <FilmReelIcon size={13} />
                 </div>
                 <div class="flex flex-col min-w-0">
@@ -4093,7 +4524,7 @@ export function App() {
                           ? "bg-rose-950/50 text-rose-300 border-rose-500/40"
                           : replayStatus === "CANCELLED"
                           ? "bg-zinc-900 text-zinc-400 border-zinc-700"
-                          : "bg-indigo-950/50 text-indigo-300 border-indigo-500/40 animate-pulse"
+                          : "accent-badge-subtle animate-pulse"
                       }`}
                     >
                       {replayStatus === "SUCCESS"
@@ -4157,7 +4588,7 @@ export function App() {
                   class={`px-2.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 transition ${
                     isReplayPlaying
                       ? "bg-amber-600 text-white shadow-glow-sm"
-                      : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-glow-sm"
+                      : "accent-btn-primary shadow-glow-sm"
                   }`}
                 >
                   {isReplayPlaying ? (
@@ -4187,7 +4618,7 @@ export function App() {
               {/* Step Scrubber / Counter */}
               <div class="flex items-center gap-2 min-w-0">
                 <span class="text-[10px] text-zinc-400 font-mono shrink-0">
-                  Step <strong class="text-indigo-300">{replaySteps.length > 0 ? selectedStepIndex + 1 : 0}</strong> of{" "}
+                  Step <strong class="accent-text">{replaySteps.length > 0 ? selectedStepIndex + 1 : 0}</strong> of{" "}
                   {replaySteps.length}
                 </span>
 
@@ -4223,9 +4654,9 @@ export function App() {
                           isCurrent
                             ? isFailed
                               ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] scale-y-125"
-                              : "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)] scale-y-125"
+                              : "accent-btn-primary scale-y-125"
                             : idx < selectedStepIndex
-                            ? "bg-indigo-700/60 hover:bg-indigo-600"
+                            ? "accent-badge-subtle"
                             : "bg-zinc-800 hover:bg-zinc-700"
                         }`}
                         title={`Step ${idx + 1}: [${s.actionType}] ${s.description}`}
@@ -4259,11 +4690,11 @@ export function App() {
                     const isFail = currentStep.actionType === "FAIL" || currentStep.status === "FAILED";
 
                     return (
-                      <div class="glass-card rounded-xl p-3 border border-indigo-500/30 bg-gradient-to-b from-indigo-950/20 to-zinc-950/60 shadow-glass space-y-2.5 animate-fade-in">
+                      <div class="glass-card rounded-xl p-3 border border-[var(--accent-border)] bg-gradient-to-b from-white/[0.03] to-zinc-950/60 shadow-glass space-y-2.5 animate-fade-in">
                         {/* Step Header */}
                         <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
                           <div class="flex items-center gap-2 min-w-0">
-                            <span class="w-6 h-6 rounded-md bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+                            <span class="w-6 h-6 rounded-md accent-badge-subtle flex items-center justify-center font-mono font-bold text-xs shrink-0">
                               #{currentStep.stepNumber || selectedStepIndex + 1}
                             </span>
                             <div class="flex items-center gap-1.5 truncate">
@@ -4274,7 +4705,7 @@ export function App() {
                                     : isType
                                     ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                                     : isSelect
-                                    ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                                    ? "accent-badge-subtle"
                                     : isNavigate
                                     ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
                                     : isComplete
@@ -4304,9 +4735,9 @@ export function App() {
 
                           {/* Typed Input or Selected Value Highlight */}
                           {currentStep.inputValue && (
-                            <div class="flex items-center gap-1.5 text-[11px] bg-indigo-950/40 border border-indigo-500/30 px-2 py-1 rounded text-indigo-200">
+                            <div class="flex items-center gap-1.5 text-[11px] accent-badge-subtle px-2 py-1 rounded">
                               <span class="text-zinc-400 font-mono text-[10px]">Value Applied:</span>
-                              <strong class="text-indigo-300 font-mono break-all">{currentStep.inputValue}</strong>
+                              <strong class="accent-text font-mono break-all">{currentStep.inputValue}</strong>
                             </div>
                           )}
                         </div>
@@ -4316,7 +4747,7 @@ export function App() {
                           {/* Target Element Selector */}
                           <div class="bg-zinc-950/60 p-2 rounded-lg border border-white/[0.04] space-y-0.5">
                             <span class="text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1">
-                              <CursorClickIcon size={10} class="text-indigo-400" />
+                              <CursorClickIcon size={10} class="accent-text" />
                               Target Locator
                             </span>
                             <p class="font-mono text-zinc-300 truncate text-[10px]" title={currentStep.targetSelector || "N/A"}>
@@ -4363,7 +4794,7 @@ export function App() {
                   <div class="space-y-1.5 pt-1">
                     <div class="flex items-center justify-between pb-1">
                       <span class="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <ListChecksIcon size={13} class="text-indigo-400" />
+                        <ListChecksIcon size={13} class="accent-text" />
                         <span>Execution Trace ({replaySteps.length} Steps)</span>
                       </span>
                       <span class="text-[10px] text-zinc-500">Click any step to inspect</span>
@@ -4382,7 +4813,7 @@ export function App() {
                             }}
                             class={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 text-xs ${
                               isSelected
-                                ? "bg-indigo-950/40 border-indigo-500/50 shadow-glow-sm"
+                                ? "accent-badge-subtle shadow-glow-sm"
                                 : "bg-zinc-950/50 border-white/[0.04] hover:border-white/[0.12] hover:bg-zinc-900/60"
                             }`}
                           >
@@ -4390,7 +4821,7 @@ export function App() {
                               <span
                                 class={`w-5 h-5 rounded flex items-center justify-center font-mono font-bold text-[10px] shrink-0 ${
                                   isSelected
-                                    ? "bg-indigo-600 text-white"
+                                    ? "accent-btn-primary"
                                     : "bg-zinc-900 text-zinc-400 border border-white/[0.06]"
                                 }`}
                               >
@@ -4411,7 +4842,7 @@ export function App() {
                               </span>
                               <span
                                 class={`truncate text-[11px] font-medium ${
-                                  isSelected ? "text-indigo-200" : "text-zinc-300"
+                                  isSelected ? "accent-text" : "text-zinc-300"
                                 }`}
                               >
                                 {step.description}
@@ -4440,7 +4871,7 @@ export function App() {
                   setIsReplayPlaying(false);
                   setIsReplayModalOpen(false);
                 }}
-                class="px-3.5 py-1.5 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow-sm active:scale-95"
+                class="px-3.5 py-1.5 rounded-lg text-xs accent-btn-primary font-semibold transition shadow-sm active:scale-95"
               >
                 Close Replay
               </button>

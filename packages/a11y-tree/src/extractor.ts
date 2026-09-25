@@ -197,19 +197,39 @@ export function isElementInteractive(element: Element, role: string): boolean {
   return false;
 }
 
-const SOCIAL_DOMAINS = [
-  "facebook.com",
-  "twitter.com",
+const SOCIAL_KEYWORDS = [
+  "facebook",
+  "fb.com",
+  "twitter",
   "x.com",
-  "instagram.com",
-  "linkedin.com",
-  "youtube.com",
-  "pinterest.com"
+  "instagram",
+  "linkedin",
+  "youtube",
+  "pinterest",
+  "whatsapp",
+  "telegram",
+  "social-share",
+  "social_share"
 ];
 
-function isOffsiteSocialLink(href?: string): boolean {
-  if (!href) return false;
-  return SOCIAL_DOMAINS.some((domain) => href.toLowerCase().includes(domain));
+function isSocialElement(element: Element, href?: string, name?: string): boolean {
+  const checkStr = [
+    href || "",
+    name || "",
+    element.getAttribute("aria-label") || "",
+    element.getAttribute("title") || "",
+    element.getAttribute("id") || "",
+    element.className && typeof element.className === "string" ? element.className : "",
+    element.getAttribute("onclick") || ""
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  // Also check child img alt or svgs
+  const imgAlt = element.querySelector("img")?.getAttribute("alt") || "";
+  const fullContext = `${checkStr} ${imgAlt.toLowerCase()}`;
+
+  return SOCIAL_KEYWORDS.some((kw) => fullContext.includes(kw));
 }
 
 export function extractSemanticNodes(root: Element = document.body): SemanticNode[] {
@@ -226,13 +246,12 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
 
     if (isInteractive) {
       const rawHref = node.tagName === "A" ? node.getAttribute("href") || undefined : undefined;
+      const name = getAccessibleName(node);
 
-      // Filter out offsite social media links so the agent doesn't get distracted
-      if (isOffsiteSocialLink(rawHref)) {
+      // Completely filter out social media links/buttons/icons so the agent never gets distracted
+      if (isSocialElement(node, rawHref, name)) {
         return;
       }
-
-      const name = getAccessibleName(node);
       const selector = generateStableSelector(node);
 
       let bounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -252,8 +271,13 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
 
       const inputElem = node as HTMLInputElement;
       const rawValue = inputElem.value;
+      const nodeId = `node-${nodeIdCounter++}`;
+      try {
+        node.setAttribute("data-difm-id", nodeId);
+      } catch {}
+
       const semanticNode: SemanticNode = {
-        id: `node-${nodeIdCounter++}`,
+        id: nodeId,
         role,
         name,
         href: rawHref,
