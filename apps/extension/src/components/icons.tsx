@@ -230,6 +230,22 @@ export function PencilSimpleIcon({ size = 16, class: className = "", ...props }:
   );
 }
 
+export function FloppyDiskIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M208,32H74.34A15.86,15.86,0,0,0,63,36.69L36.69,63A15.86,15.86,0,0,0,32,74.34V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM160,48V80H96V48ZM208,208H48V77.66L77.66,48H80V88a8,8,0,0,0,8,8h80a8,8,0,0,0,8-8V48h32ZM176,144a24,24,0,1,1-24-24A24,24,0,0,1,176,144Z" />
+    </svg>
+  );
+}
+
 export function BuildingsIcon({ size = 16, class: className = "", ...props }: IconProps) {
   return (
     <svg

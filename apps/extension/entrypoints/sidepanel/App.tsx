@@ -65,7 +65,8 @@ import {
   SlidersIcon,
   UploadSimpleIcon,
   ScanIcon,
-  FileArrowUpIcon
+  FileArrowUpIcon,
+  FloppyDiskIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -2583,7 +2584,7 @@ export function App() {
                   title="Save current goal and profile into your Task List for future runs"
                   class="px-3 h-9 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-800 text-zinc-200 hover:text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 border border-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
                 >
-                  <PlusIcon size={13} />
+                  <FloppyDiskIcon size={13} />
                   <span>Save Task</span>
                 </button>
               </div>
@@ -2893,15 +2894,15 @@ export function App() {
                         }}
                         class="shimmer-btn text-white text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 shadow-sm active:scale-95"
                       >
-                        <PlayIcon size={10} class="fill-current" />
-                        <span>⚡ Run Task Now</span>
+                        <PlayIcon size={11} class="fill-current" />
+                        <span>Run Task Now</span>
                       </button>
                       <button
                         onClick={() => handleCreatePendingTask()}
                         class="bg-emerald-800/80 hover:bg-emerald-700 active:bg-emerald-800 text-emerald-100 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-400/30 inline-flex items-center gap-1.5 shadow-sm active:scale-95 transition"
                       >
-                        <PlusIcon size={12} />
-                        <span>💾 Save to Task List</span>
+                        <FloppyDiskIcon size={12} />
+                        <span>Save to Task List</span>
                       </button>
                     </div>
                   </div>
@@ -3314,16 +3315,16 @@ export function App() {
                     onClick={() => handleCreatePendingTask()}
                     class="flex-1 shimmer-btn h-8 rounded-lg text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 shadow-glow-sm active:scale-[0.98] transition"
                   >
-                    <PlusIcon size={13} />
-                    <span>💾 Save Task & Schedule</span>
+                    <FloppyDiskIcon size={13} />
+                    <span>Save Task & Schedule</span>
                   </button>
                   <button
                     onClick={() => handleCreatePendingTask({ andRun: true })}
                     title="Save task and start execution immediately"
-                    class="px-3 h-8 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition border border-indigo-400/30"
+                    class="px-3.5 h-8 shimmer-btn text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition"
                   >
                     <PlayIcon size={11} class="fill-current" />
-                    <span>⚡ Save & Run</span>
+                    <span>Save & Run</span>
                   </button>
                 </div>
               </div>
