@@ -140,12 +140,12 @@ ${formattedTree}
 
 Analyze the user goal and the interactive elements, then output the next JSON action.`;
 
-    // Prioritize configured model, followed by verified live Groq models (qwen/qwen3.8-27b, openai/gpt-oss-120b, openai/gpt-oss-20b)
+    // Prioritize high-quota models: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b, allam-2-7b
     const candidateModels = [
       this.model,
-      "qwen/qwen3.8-27b",
       "openai/gpt-oss-120b",
       "openai/gpt-oss-20b",
+      "qwen/qwen3.8-27b",
       "allam-2-7b"
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
@@ -153,20 +153,38 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
 
     for (const modelToTry of candidateModels) {
       try {
-        const response = await this.client.chat.completions.create({
-          model: modelToTry,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userMessage }
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-          max_tokens: 350
-        });
+        let messageContent = "";
+        try {
+          const response = await this.client.chat.completions.create({
+            model: modelToTry,
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: userMessage }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            max_tokens: 800
+          });
+          messageContent = response.choices[0]?.message?.content || "{}";
+        } catch (jsonErr: any) {
+          // If model fails strict server-side JSON schema validation, retry without response_format
+          if (jsonErr?.status === 400 || jsonErr?.message?.includes("JSON")) {
+            const fallbackResponse = await this.client.chat.completions.create({
+              model: modelToTry,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: `${userMessage}\n\nIMPORTANT: Return ONLY a valid JSON object matching the requested schema.` }
+              ],
+              temperature: 0.1,
+              max_tokens: 800
+            });
+            messageContent = fallbackResponse.choices[0]?.message?.content || "{}";
+          } else {
+            throw jsonErr;
+          }
+        }
 
-        const messageContent = response.choices[0]?.message?.content || "{}";
         let rawAction: any = null;
-
         try {
           const parsed = JSON.parse(messageContent);
           rawAction = parsed.action || parsed;
@@ -179,11 +197,7 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
         }
 
         if (!rawAction || !rawAction.type) {
-          return {
-            type: "FAIL",
-            error: "Could not determine next action from model response",
-            recoverable: false
-          };
+          continue;
         }
 
         return this.mapToAgentAction(rawAction, observation);
@@ -191,7 +205,6 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
         const errorMsg = err instanceof Error ? err.message : "Planner error";
         lastError = errorMsg;
         console.warn(`Planning attempt with model ${modelToTry} failed:`, errorMsg);
-        // Try next candidate model if current model fails (404, 429, decommissioned, rate limit, etc.)
         continue;
       }
     }
