@@ -6,6 +6,7 @@ import { PlannerService } from "./planner.js";
 import { TaskOrchestrator } from "./orchestrator.js";
 import { PendingTaskManager } from "./pending-task-manager.js";
 import { ProfileVaultManager } from "./profile-vault-manager.js";
+import { NotificationService } from "./notification.js";
 import {
   ExtensionMessageSchema,
   TaskCreateRequestSchema,
@@ -27,12 +28,35 @@ export async function createServer() {
     config.LLM_BASE_URL,
     config.LLM_MODEL
   );
-  const orchestrator = new TaskOrchestrator(planner);
+  const notificationService = new NotificationService();
+  const orchestrator = new TaskOrchestrator(planner, notificationService);
   const pendingTaskManager = new PendingTaskManager();
   const profileVaultManager = new ProfileVaultManager();
 
   app.get("/health", async () => {
     return { status: "ok", timestamp: Date.now() };
+  });
+
+  // Notification Configuration & Channel Testing Endpoints
+  app.get("/notifications/config", async () => {
+    return { settings: notificationService.getSettings() };
+  });
+
+  app.post("/notifications/config", async (req) => {
+    const updated = notificationService.saveSettings(req.body as any);
+    return { settings: updated };
+  });
+
+  app.post("/notifications/test", async (req, reply) => {
+    const body = req.body as {
+      channel: "telegram" | "whatsapp" | "webhook";
+      customConfig?: any;
+    };
+    if (!body || !body.channel) {
+      return reply.status(400).send({ success: false, message: "Channel is required (telegram, whatsapp, or webhook)" });
+    }
+    const result = await notificationService.testChannel(body.channel, body.customConfig);
+    return result;
   });
 
   // Bill Document Extraction Endpoint (Drag & Drop / Paste)

@@ -6,6 +6,7 @@ import type {
 } from "@difm/shared";
 import { isValidStateTransition, evaluateRiskTier } from "@difm/shared";
 import type { PlannerService } from "./planner.js";
+import type { NotificationService } from "./notification.js";
 
 export interface TaskSession {
   id: string;
@@ -21,9 +22,11 @@ export interface TaskSession {
 export class TaskOrchestrator {
   private sessions = new Map<string, TaskSession>();
   private planner: PlannerService;
+  private notificationService?: NotificationService;
 
-  constructor(planner: PlannerService) {
+  constructor(planner: PlannerService, notificationService?: NotificationService) {
     this.planner = planner;
+    this.notificationService = notificationService;
   }
 
   createTask(taskId: string, goal: string): TaskSession {
@@ -74,6 +77,16 @@ export class TaskOrchestrator {
       session.activeChallenge = observation.securityChallenge;
       this.transitionState(session, "HUMAN_TAKEOVER");
       session.history.push(`[Security Check]: ${observation.securityChallenge.description} detected. Pausing for human takeover.`);
+      
+      this.notificationService?.dispatch({
+        title: "Human Takeover Required",
+        summary: observation.securityChallenge.description || "Security verification or CAPTCHA detected on webpage.",
+        taskTitle: session.goal,
+        status: "APPROVAL_REQUIRED",
+        portalUrl: observation.url,
+        timestamp: Date.now()
+      }).catch(() => {});
+
       return {
         isSecurityChallenge: true,
         challenge: observation.securityChallenge,
@@ -99,6 +112,22 @@ export class TaskOrchestrator {
     if (riskPolicy.requiresExplicitApproval || plannedAction.type === "REQUEST_APPROVAL") {
       session.pendingApprovalAction = plannedAction;
       this.transitionState(session, "WAITING_FOR_APPROVAL");
+
+      const actionSummary = "summary" in plannedAction && (plannedAction as any).summary
+        ? (plannedAction as any).summary
+        : "description" in plannedAction && (plannedAction as any).description
+        ? (plannedAction as any).description
+        : `Confirmation needed for ${plannedAction.type} action.`;
+
+      this.notificationService?.dispatch({
+        title: "Approval Required",
+        summary: actionSummary,
+        taskTitle: session.goal,
+        status: "APPROVAL_REQUIRED",
+        portalUrl: observation.url,
+        timestamp: Date.now()
+      }).catch(() => {});
+
       return {
         action: plannedAction,
         requiresApproval: true,
@@ -109,12 +138,32 @@ export class TaskOrchestrator {
     if (plannedAction.type === "COMPLETE") {
       this.transitionState(session, "COMPLETED");
       session.history.push(`Completed: ${plannedAction.summary}`);
+
+      this.notificationService?.dispatch({
+        title: "Task Completed",
+        summary: plannedAction.summary || "Task finished successfully.",
+        taskTitle: session.goal,
+        status: "COMPLETED",
+        portalUrl: observation.url,
+        timestamp: Date.now()
+      }).catch(() => {});
+
       return { action: plannedAction, requiresApproval: false };
     }
 
     if (plannedAction.type === "FAIL") {
       this.transitionState(session, "FAILED");
       session.history.push(`Failed: ${plannedAction.error}`);
+
+      this.notificationService?.dispatch({
+        title: "Task Execution Failed",
+        summary: plannedAction.error || "Agent could not complete the task.",
+        taskTitle: session.goal,
+        status: "FAILED",
+        portalUrl: observation.url,
+        timestamp: Date.now()
+      }).catch(() => {});
+
       return { action: plannedAction, requiresApproval: false };
     }
 
