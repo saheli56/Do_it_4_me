@@ -18,9 +18,34 @@ export const ProfileColorSchema = z.enum([
   "violet",
   "rose",
   "blue",
-  "cyan"
+  "cyan",
+  "fuchsia",
+  "teal",
+  "orange"
 ]);
 export type ProfileColor = z.infer<typeof ProfileColorSchema>;
+
+export const AppAccentColorSchema = z.enum([
+  "indigo",
+  "mint",
+  "cherry",
+  "amber",
+  "cyan",
+  "violet",
+  "sapphire",
+  "magenta",
+  "emerald",
+  "coral",
+  "lavender",
+  "teal",
+  "peach_fuzz",
+  "lime",
+  "ocean",
+  "flame",
+  "aurora",
+  "gold"
+]);
+export type AppAccentColor = z.infer<typeof AppAccentColorSchema>;
 
 export const AddressSchema = z.object({
   street: z.string().optional(),

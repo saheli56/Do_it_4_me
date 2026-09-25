@@ -213,6 +213,7 @@ export class PendingTaskManager {
       durationMs?: number;
       summary: string;
       stepsCount?: number;
+      steps?: import("@difm/shared").ExecutionStepDetail[];
       error?: string;
     }
   ): PendingTaskItem {
@@ -225,7 +226,8 @@ export class PendingTaskManager {
       status: record.status,
       durationMs: record.durationMs || 0,
       summary: record.summary,
-      stepsCount: record.stepsCount || 1,
+      stepsCount: record.stepsCount || (record.steps ? record.steps.length : 1),
+      steps: record.steps || [],
       error: record.error
     };
 

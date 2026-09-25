@@ -13,7 +13,9 @@ import type {
   CreateUserProfile,
   UpdateUserProfile,
   ProfileIconType,
-  ProfileColor
+  ProfileColor,
+  AppAccentColor,
+  ExecutionStepDetail
 } from "@difm/shared";
 import {
   LightningIcon,
@@ -48,7 +50,17 @@ import {
   IdentificationCardIcon,
   StarIcon,
   CheckIcon,
-  CreditCardIcon
+  CreditCardIcon,
+  FilmReelIcon,
+  CursorClickIcon,
+  ArrowCounterClockwiseIcon,
+  EyeIcon,
+  CodeIcon,
+  BrowsersIcon,
+  GearIcon,
+  PaletteIcon,
+  DotsThreeVerticalIcon,
+  SlidersIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -225,6 +237,266 @@ function getProfileColorStyles(color?: ProfileColor) {
   }
 }
 
+export interface AccentThemeOption {
+  id: AppAccentColor;
+  label: string;
+  previewColor: string;
+  gradientFrom: string;
+  gradientTo: string;
+}
+
+export const ACCENT_THEME_OPTIONS: AccentThemeOption[] = [
+  {
+    id: "indigo",
+    label: "Indigo",
+    previewColor: "#6366F1",
+    gradientFrom: "#4f46e5",
+    gradientTo: "#818cf8"
+  },
+  {
+    id: "mint",
+    label: "Mint",
+    previewColor: "#10B981",
+    gradientFrom: "#059669",
+    gradientTo: "#34d399"
+  },
+  {
+    id: "cherry",
+    label: "Cherry",
+    previewColor: "#F43F5E",
+    gradientFrom: "#e11d48",
+    gradientTo: "#fb7185"
+  },
+  {
+    id: "amber",
+    label: "Amber",
+    previewColor: "#F59E0B",
+    gradientFrom: "#d97706",
+    gradientTo: "#fbbf24"
+  },
+  {
+    id: "cyan",
+    label: "Cyan",
+    previewColor: "#06B6D4",
+    gradientFrom: "#0891b2",
+    gradientTo: "#22d3ee"
+  },
+  {
+    id: "violet",
+    label: "Violet",
+    previewColor: "#8B5CF6",
+    gradientFrom: "#7c3aed",
+    gradientTo: "#a78bfa"
+  },
+  {
+    id: "sapphire",
+    label: "Sapphire",
+    previewColor: "#2563EB",
+    gradientFrom: "#1d4ed8",
+    gradientTo: "#60a5fa"
+  },
+  {
+    id: "magenta",
+    label: "Magenta",
+    previewColor: "#BE123C",
+    gradientFrom: "#9f1239",
+    gradientTo: "#f43f5e"
+  },
+  {
+    id: "emerald",
+    label: "Emerald",
+    previewColor: "#059669",
+    gradientFrom: "#047857",
+    gradientTo: "#10b981"
+  },
+  {
+    id: "coral",
+    label: "Coral",
+    previewColor: "#FF6B6B",
+    gradientFrom: "#ee5253",
+    gradientTo: "#ff8787"
+  },
+  {
+    id: "lavender",
+    label: "Lavender",
+    previewColor: "#A855F7",
+    gradientFrom: "#9333ea",
+    gradientTo: "#c084fc"
+  },
+  {
+    id: "teal",
+    label: "Teal",
+    previewColor: "#0D9488",
+    gradientFrom: "#0f766e",
+    gradientTo: "#2dd4bf"
+  },
+  {
+    id: "peach_fuzz",
+    label: "Peach Fuzz",
+    previewColor: "#FF7A59",
+    gradientFrom: "#f06a4b",
+    gradientTo: "#ff9b82"
+  },
+  {
+    id: "lime",
+    label: "Lime",
+    previewColor: "#84CC16",
+    gradientFrom: "#65a30d",
+    gradientTo: "#a3e635"
+  },
+  {
+    id: "ocean",
+    label: "Ocean",
+    previewColor: "#0EA5E9",
+    gradientFrom: "#0284c7",
+    gradientTo: "#38bdf8"
+  },
+  {
+    id: "flame",
+    label: "Flame",
+    previewColor: "#FF5722",
+    gradientFrom: "#e64a19",
+    gradientTo: "#ff7043"
+  },
+  {
+    id: "aurora",
+    label: "Aurora",
+    previewColor: "#00B4D8",
+    gradientFrom: "#0096c7",
+    gradientTo: "#48cae4"
+  },
+  {
+    id: "gold",
+    label: "Gold",
+    previewColor: "#EAB308",
+    gradientFrom: "#ca8a04",
+    gradientTo: "#facc15"
+  }
+];
+
+function getAccentThemeStyles(accent: AppAccentColor) {
+  switch (accent) {
+    case "violet":
+      return {
+        badge: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+        tabActive: "bg-gradient-to-r from-violet-500/25 via-violet-600/25 to-purple-500/25 border-violet-500/50 text-violet-200 shadow-glow-sm",
+        iconText: "text-violet-400",
+        pillBg: "bg-violet-600/30 border-violet-500 text-violet-200",
+        btnPrimary: "bg-violet-600 hover:bg-violet-500 text-white shadow-glow-sm",
+        borderHighlight: "border-violet-500/40",
+        textHighlight: "text-violet-300"
+      };
+    case "mint":
+    case "emerald":
+      return {
+        badge: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+        tabActive: "bg-gradient-to-r from-emerald-500/25 via-emerald-600/25 to-teal-500/25 border-emerald-500/50 text-emerald-200 shadow-glow-sm",
+        iconText: "text-emerald-400",
+        pillBg: "bg-emerald-600/30 border-emerald-500 text-emerald-200",
+        btnPrimary: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-glow-sm",
+        borderHighlight: "border-emerald-500/40",
+        textHighlight: "text-emerald-300"
+      };
+    case "cyan":
+    case "aurora":
+      return {
+        badge: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+        tabActive: "bg-gradient-to-r from-cyan-500/25 via-cyan-600/25 to-blue-500/25 border-cyan-500/50 text-cyan-200 shadow-glow-sm",
+        iconText: "text-cyan-400",
+        pillBg: "bg-cyan-600/30 border-cyan-500 text-cyan-200",
+        btnPrimary: "bg-cyan-600 hover:bg-cyan-500 text-white shadow-glow-sm",
+        borderHighlight: "border-cyan-500/40",
+        textHighlight: "text-cyan-300"
+      };
+    case "cherry":
+    case "magenta":
+      return {
+        badge: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+        tabActive: "bg-gradient-to-r from-rose-500/25 via-rose-600/25 to-pink-500/25 border-rose-500/50 text-rose-200 shadow-glow-sm",
+        iconText: "text-rose-400",
+        pillBg: "bg-rose-600/30 border-rose-500 text-rose-200",
+        btnPrimary: "bg-rose-600 hover:bg-rose-500 text-white shadow-glow-sm",
+        borderHighlight: "border-rose-500/40",
+        textHighlight: "text-rose-300"
+      };
+    case "amber":
+    case "gold":
+      return {
+        badge: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+        tabActive: "bg-gradient-to-r from-amber-500/25 via-amber-600/25 to-yellow-500/25 border-amber-500/50 text-amber-200 shadow-glow-sm",
+        iconText: "text-amber-400",
+        pillBg: "bg-amber-600/30 border-amber-500 text-amber-200",
+        btnPrimary: "bg-amber-600 hover:bg-amber-500 text-white shadow-glow-sm",
+        borderHighlight: "border-amber-500/40",
+        textHighlight: "text-amber-300"
+      };
+    case "lavender":
+      return {
+        badge: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+        tabActive: "bg-gradient-to-r from-purple-500/25 via-purple-600/25 to-fuchsia-500/25 border-purple-500/50 text-purple-200 shadow-glow-sm",
+        iconText: "text-purple-400",
+        pillBg: "bg-purple-600/30 border-purple-500 text-purple-200",
+        btnPrimary: "bg-purple-600 hover:bg-purple-500 text-white shadow-glow-sm",
+        borderHighlight: "border-purple-500/40",
+        textHighlight: "text-purple-300"
+      };
+    case "teal":
+      return {
+        badge: "bg-teal-500/15 text-teal-300 border-teal-500/30",
+        tabActive: "bg-gradient-to-r from-teal-500/25 via-teal-600/25 to-emerald-500/25 border-teal-500/50 text-teal-200 shadow-glow-sm",
+        iconText: "text-teal-400",
+        pillBg: "bg-teal-600/30 border-teal-500 text-teal-200",
+        btnPrimary: "bg-teal-600 hover:bg-teal-500 text-white shadow-glow-sm",
+        borderHighlight: "border-teal-500/40",
+        textHighlight: "text-teal-300"
+      };
+    case "sapphire":
+    case "ocean":
+      return {
+        badge: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+        tabActive: "bg-gradient-to-r from-blue-500/25 via-blue-600/25 to-sky-500/25 border-blue-500/50 text-blue-200 shadow-glow-sm",
+        iconText: "text-blue-400",
+        pillBg: "bg-blue-600/30 border-blue-500 text-blue-200",
+        btnPrimary: "bg-blue-600 hover:bg-blue-500 text-white shadow-glow-sm",
+        borderHighlight: "border-blue-500/40",
+        textHighlight: "text-blue-300"
+      };
+    case "coral":
+    case "peach_fuzz":
+    case "flame":
+      return {
+        badge: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+        tabActive: "bg-gradient-to-r from-orange-500/25 via-orange-600/25 to-rose-500/25 border-orange-500/50 text-orange-200 shadow-glow-sm",
+        iconText: "text-orange-400",
+        pillBg: "bg-orange-600/30 border-orange-500 text-orange-200",
+        btnPrimary: "bg-orange-600 hover:bg-orange-500 text-white shadow-glow-sm",
+        borderHighlight: "border-orange-500/40",
+        textHighlight: "text-orange-300"
+      };
+    case "lime":
+      return {
+        badge: "bg-lime-500/15 text-lime-300 border-lime-500/30",
+        tabActive: "bg-gradient-to-r from-lime-500/25 via-lime-600/25 to-emerald-500/25 border-lime-500/50 text-lime-200 shadow-glow-sm",
+        iconText: "text-lime-400",
+        pillBg: "bg-lime-600/30 border-lime-500 text-lime-200",
+        btnPrimary: "bg-lime-600 hover:bg-lime-500 text-white shadow-glow-sm",
+        borderHighlight: "border-lime-500/40",
+        textHighlight: "text-lime-300"
+      };
+    case "indigo":
+    default:
+      return {
+        badge: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+        tabActive: "bg-gradient-to-r from-indigo-500/25 via-indigo-600/25 to-violet-500/25 border-indigo-500/50 text-indigo-200 shadow-glow-sm",
+        iconText: "text-indigo-400",
+        pillBg: "bg-indigo-600/30 border-indigo-500 text-indigo-200",
+        btnPrimary: "bg-indigo-600 hover:bg-indigo-500 text-white shadow-glow-sm",
+        borderHighlight: "border-indigo-500/40",
+        textHighlight: "text-indigo-300"
+      };
+  }
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<"EXECUTE" | "PENDING">("EXECUTE");
   const [goal, setGoal] = useState("");
@@ -240,6 +512,17 @@ export function App() {
     title: string;
     summary: string;
   } | null>(null);
+
+  // App Theme & Accent Color State
+  const [accentColor, setAccentColor] = useState<AppAccentColor>(() => {
+    try {
+      return (localStorage.getItem("difm_theme_accent") as AppAccentColor) || "violet";
+    } catch {
+      return "violet";
+    }
+  });
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   // Identity Profile Vault State
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
@@ -397,12 +680,26 @@ export function App() {
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [currentNoteText, setCurrentNoteText] = useState("");
 
+  // Visual Execution Replay & Step Inspector State
+  const [isReplayModalOpen, setIsReplayModalOpen] = useState(false);
+  const [replayTitle, setReplayTitle] = useState("");
+  const [replayStatus, setReplayStatus] = useState<"SUCCESS" | "FAILED" | "IN_PROGRESS" | "CANCELLED">("IN_PROGRESS");
+  const [replayDurationMs, setReplayDurationMs] = useState(0);
+  const [replaySteps, setReplaySteps] = useState<ExecutionStepDetail[]>([]);
+  const [selectedStepIndex, setSelectedStepIndex] = useState<number>(0);
+  const [isReplayPlaying, setIsReplayPlaying] = useState<boolean>(false);
+  const [replayPlaybackSpeed, setReplayPlaybackSpeed] = useState<number>(1);
+  const [stepFilterType, setStepFilterType] = useState<string>("ALL");
+  const [stepSearchQuery, setStepSearchQuery] = useState<string>("");
+
   const socketRef = useRef<WebSocket | null>(null);
   const executionTabIdRef = useRef<number | null>(null);
   const currentGoalRef = useRef<string>("");
   const executingPendingTaskIdRef = useRef<string | null>(null);
   const executionStartTimeRef = useRef<number>(0);
   const executionStepsCountRef = useRef<number>(0);
+  const liveExecutionStepsRef = useRef<ExecutionStepDetail[]>([]);
+  const lastObservationRef = useRef<PageObservation | null>(null);
   const logContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchProfiles = async () => {
@@ -729,6 +1026,7 @@ export function App() {
               setTimeout(() => {
                 chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
                   if (retryRes?.observation) {
+                    lastObservationRef.current = retryRes.observation;
                     const nextObsMsg: ExtensionMessage = {
                       type: "OBSERVATION_CAPTURED",
                       taskId: currentTaskId,
@@ -745,6 +1043,7 @@ export function App() {
             }
           );
         } else {
+          lastObservationRef.current = response.observation;
           const nextObsMsg: ExtensionMessage = {
             type: "OBSERVATION_CAPTURED",
             taskId: currentTaskId,
@@ -856,7 +1155,65 @@ export function App() {
           setSecurityChallenge(null);
           setTaskState("EXECUTING");
           executionStepsCountRef.current += 1;
-          setLogs((prev) => [...prev, `Executing: [${msg.action.type}]`]);
+          const currentStepNum = executionStepsCountRef.current;
+          const stepTimestamp = Date.now();
+          const obs = lastObservationRef.current;
+
+          let targetName = "";
+          let targetRole = "";
+          let targetSelector = "";
+          let inputValue = "";
+          let desc = "";
+
+          const action = msg.action;
+          if (action.type === "CLICK") {
+            targetName = action.target.name || "";
+            targetRole = action.target.role || "";
+            targetSelector = action.target.selector || action.target.id || "";
+            desc = action.description || `Click on ${targetName || targetRole || "element"}`;
+          } else if (action.type === "TYPE") {
+            targetName = action.target.name || "";
+            targetRole = action.target.role || "";
+            targetSelector = action.target.selector || action.target.id || "";
+            inputValue = action.maskInput ? "••••••••" : action.text;
+            desc = action.description || `Type "${inputValue}" into ${targetName || targetRole || "input"}`;
+          } else if (action.type === "SELECT") {
+            targetName = action.target.name || "";
+            targetRole = action.target.role || "";
+            targetSelector = action.target.selector || action.target.id || "";
+            inputValue = action.value;
+            desc = action.description || `Select "${action.value}" in ${targetName || targetRole || "dropdown"}`;
+          } else if (action.type === "NAVIGATE") {
+            desc = action.description || `Navigate to ${action.url}`;
+          } else if (action.type === "WAIT") {
+            desc = `Wait ${action.durationMs}ms (${action.reason})`;
+          } else if (action.type === "COMPLETE") {
+            desc = action.summary || "Task completed successfully";
+          } else if (action.type === "FAIL") {
+            desc = action.error || "Action failed";
+          } else {
+            desc = (action as any).summary || (action as any).prompt || action.type;
+          }
+
+          const stepDetail: ExecutionStepDetail = {
+            id: `step_${currentStepNum}_${Date.now()}`,
+            stepNumber: currentStepNum,
+            timestamp: stepTimestamp,
+            actionType: action.type,
+            description: desc,
+            targetName: targetName || undefined,
+            targetRole: targetRole || undefined,
+            targetSelector: targetSelector || undefined,
+            inputValue: inputValue || undefined,
+            url: obs?.url || undefined,
+            pageTitle: obs?.title || undefined,
+            status: action.type === "FAIL" ? "FAILED" : "SUCCESS",
+            elementsCount: obs?.interactiveNodes?.length || undefined,
+            durationMs: stepTimestamp - (liveExecutionStepsRef.current.slice(-1)[0]?.timestamp || executionStartTimeRef.current)
+          };
+
+          liveExecutionStepsRef.current.push(stepDetail);
+          setLogs((prev) => [...prev, `Executing: [${msg.action.type}] ${desc}`]);
 
           if (msg.action.type === "COMPLETE") {
             setTaskState("COMPLETED");
@@ -867,8 +1224,10 @@ export function App() {
               summary
             });
 
+            const durationMs = Date.now() - executionStartTimeRef.current;
+            const finalSteps = [...liveExecutionStepsRef.current];
+
             if (executingPendingTaskIdRef.current) {
-              const durationMs = Date.now() - executionStartTimeRef.current;
               try {
                 await fetch(`http://127.0.0.1:3001/pending-tasks/${executingPendingTaskIdRef.current}/record-run`, {
                   method: "POST",
@@ -877,7 +1236,8 @@ export function App() {
                     status: "SUCCESS",
                     durationMs,
                     summary,
-                    stepsCount: executionStepsCountRef.current
+                    stepsCount: finalSteps.length,
+                    steps: finalSteps
                   })
                 });
               } catch {}
@@ -890,8 +1250,10 @@ export function App() {
             const errorText = msg.action.error || "Action execution failed";
             setLogs((prev) => [...prev, `Task Failed: ${errorText}`]);
 
+            const durationMs = Date.now() - executionStartTimeRef.current;
+            const finalSteps = [...liveExecutionStepsRef.current];
+
             if (executingPendingTaskIdRef.current) {
-              const durationMs = Date.now() - executionStartTimeRef.current;
               try {
                 await fetch(`http://127.0.0.1:3001/pending-tasks/${executingPendingTaskIdRef.current}/record-run`, {
                   method: "POST",
@@ -900,7 +1262,8 @@ export function App() {
                     status: "FAILED",
                     durationMs,
                     error: errorText,
-                    stepsCount: executionStepsCountRef.current
+                    stepsCount: finalSteps.length,
+                    steps: finalSteps
                   })
                 });
               } catch {}
@@ -999,6 +1362,25 @@ export function App() {
   }, [searchQuery, statusFilter, priorityFilter, sortBy]);
 
   useEffect(() => {
+    let timer: any = null;
+    if (isReplayPlaying) {
+      const intervalMs = Math.max(400, Math.round(1500 / (replayPlaybackSpeed || 1)));
+      timer = setInterval(() => {
+        setSelectedStepIndex((prev) => {
+          if (prev >= replaySteps.length - 1) {
+            setIsReplayPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, intervalMs);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isReplayPlaying, replayPlaybackSpeed, replaySteps.length]);
+
+  useEffect(() => {
     if (logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
@@ -1045,6 +1427,7 @@ export function App() {
     executingPendingTaskIdRef.current = pendingTaskId || null;
     executionStartTimeRef.current = Date.now();
     executionStepsCountRef.current = 0;
+    liveExecutionStepsRef.current = [];
 
     try {
       const tabId = await openAndPrepareTab(customTargetUrl);
@@ -1408,6 +1791,50 @@ export function App() {
   };
 
 
+  const handleOpenLiveReplay = () => {
+    const steps = [...liveExecutionStepsRef.current];
+    setReplayTitle(currentGoalRef.current ? `Live Run: ${currentGoalRef.current}` : "Active Agent Execution");
+    setReplayStatus(
+      taskState === "COMPLETED"
+        ? "SUCCESS"
+        : taskState === "FAILED"
+        ? "FAILED"
+        : taskState === "CANCELLED"
+        ? "CANCELLED"
+        : "IN_PROGRESS"
+    );
+    setReplayDurationMs(Date.now() - executionStartTimeRef.current);
+    setReplaySteps(steps);
+    setSelectedStepIndex(Math.max(0, steps.length - 1));
+    setIsReplayPlaying(false);
+    setIsReplayModalOpen(true);
+  };
+
+  const handleOpenHistoricalReplay = (taskTitle: string, run: import("@difm/shared").TaskExecutionRecord) => {
+    let steps = run.steps && run.steps.length > 0 ? run.steps : [];
+    if (steps.length === 0) {
+      // Synthesize default fallback step if legacy record had no detailed steps
+      steps = [
+        {
+          id: `${run.id}_step1`,
+          stepNumber: 1,
+          timestamp: run.runAt,
+          actionType: run.status === "SUCCESS" ? "COMPLETE" : "FAIL",
+          description: run.summary || run.error || "Executed autonomous workflow",
+          status: run.status === "SUCCESS" ? "SUCCESS" : "FAILED",
+          durationMs: run.durationMs
+        }
+      ];
+    }
+    setReplayTitle(`${taskTitle} (${new Date(run.runAt).toLocaleTimeString()})`);
+    setReplayStatus(run.status);
+    setReplayDurationMs(run.durationMs);
+    setReplaySteps(steps);
+    setSelectedStepIndex(0);
+    setIsReplayPlaying(false);
+    setIsReplayModalOpen(true);
+  };
+
   const handleCloneTask = async (id: string) => {
     try {
       await fetch(`http://127.0.0.1:3001/pending-tasks/${id}/clone`, {
@@ -1483,34 +1910,33 @@ export function App() {
   const activeScheduledCount = pendingTasks.filter((t) => t.schedule?.enabled && t.status !== "COMPLETED").length;
   const activePendingCount = pendingTasks.filter((t) => t.status !== "COMPLETED").length;
   const dueSoonCount = pendingTasks.filter((t) => t.status === "DUE_SOON").length;
+  const currentAccentStyles = getAccentThemeStyles(accentColor);
+
+  const handleSelectAccentColor = (newAccent: AppAccentColor) => {
+    setAccentColor(newAccent);
+    localStorage.setItem("difm_theme_accent", newAccent);
+  };
 
   return (
-    <div class="relative min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-3 sm:p-4 max-w-full selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div
+      data-accent={accentColor}
+      class="relative min-h-screen bg-zinc-950 text-zinc-100 flex flex-col p-3 sm:p-4 max-w-full selection:bg-indigo-500/30 selection:text-indigo-200"
+    >
       {/* Aceternity ambient glow backdrop */}
       <div class="ambient-glow" />
 
       {/* Header Section */}
-      <header class="relative z-20 flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-glow-sm shrink-0">
-            <SparkleIcon size={15} class="text-white" />
+      <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="w-6 h-6 rounded-lg accent-gradient-bg flex items-center justify-center shadow-glow-sm shrink-0">
+            <SparkleIcon size={13} class="text-white" />
           </div>
-          <div class="flex flex-col min-w-0">
-            <div class="flex items-center gap-1.5">
-              <h1 class="text-xs sm:text-sm font-bold bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent truncate tracking-tight">
-                Do It For Me
-              </h1>
-              <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-widest shrink-0">
-                Agent v2
-              </span>
-            </div>
-            <p class="text-[10px] text-zinc-400 font-medium truncate">
-              Autonomous Web Actions & Schedules
-            </p>
-          </div>
+          <h1 class="text-xs sm:text-sm font-bold text-zinc-100 truncate tracking-tight">
+            Do It For Me
+          </h1>
         </div>
 
-        {/* Profile Vault Quick Switcher & Live Status */}
+        {/* Profile Vault Quick Switcher, Live Status & Settings Icon Button */}
         <div class="flex items-center gap-1.5 shrink-0">
           {/* Active Profile Pill Switcher */}
           <div class="relative">
@@ -1613,20 +2039,104 @@ export function App() {
             })()}
           </div>
 
-          {/* Live Indicator */}
-          <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-white/[0.08] text-[10px] text-zinc-400 shrink-0">
-            <span
-              class={`w-1.5 h-1.5 rounded-full ${
-                taskState === "EXECUTING" || taskState === "PLANNING"
-                  ? "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"
-                  : taskState === "COMPLETED"
-                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                  : "bg-emerald-500"
+          {/* Feature Hub Dropdown Menu */}
+          <div class="relative">
+            <button
+              onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+              class={`p-1.5 rounded-lg border transition active:scale-95 shrink-0 ${
+                isMoreMenuOpen
+                  ? "bg-white/[0.12] border-white/[0.25] text-white"
+                  : "bg-zinc-900/90 hover:bg-zinc-800 border border-white/[0.08] hover:border-white/[0.18] text-zinc-400 hover:text-white"
               }`}
-            />
-            <span class="font-mono text-[9px] uppercase tracking-wider text-zinc-300">
-              {taskState || "READY"}
-            </span>
+              title="Feature Hub & Menu"
+            >
+              <DotsThreeVerticalIcon size={14} />
+            </button>
+
+            {isMoreMenuOpen && (
+              <div class="absolute right-0 top-full mt-1.5 w-60 glass-panel rounded-xl shadow-2xl border border-white/[0.12] py-1.5 z-50 animate-scale-in">
+                <div class="px-3 py-1 border-b border-white/[0.06] flex items-center justify-between">
+                  <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
+                    Feature Hub
+                  </span>
+                  <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-white/[0.06] text-zinc-400 font-mono">
+                    All Tools
+                  </span>
+                </div>
+
+                <div class="py-1 space-y-0.5 px-1 text-xs">
+                  {/* Appearance & Accent Theme */}
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setIsSettingsModalOpen(true);
+                    }}
+                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
+                  >
+                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <PaletteIcon size={12} />
+                    </div>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-[11px] font-semibold">Appearance & Colors</span>
+                      <span class="text-[9px] text-zinc-500 font-mono capitalize">Active: {accentColor}</span>
+                    </div>
+                  </button>
+
+                  {/* Multi-Profile Identity Vault */}
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setEditingProfile(null);
+                      setIsCreatingNewProfile(false);
+                      setIsProfileVaultModalOpen(true);
+                    }}
+                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
+                  >
+                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <IdentificationCardIcon size={12} />
+                    </div>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-[11px] font-semibold">Identity Vault</span>
+                      <span class="text-[9px] text-zinc-500">{profiles.length} Profiles Configured</span>
+                    </div>
+                  </button>
+
+                  {/* Visual Execution Replay */}
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      handleOpenLiveReplay();
+                    }}
+                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
+                  >
+                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <FilmReelIcon size={12} />
+                    </div>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-[11px] font-semibold">Visual Execution Replay</span>
+                      <span class="text-[9px] text-zinc-500">Step Timeline & DOM Inspector</span>
+                    </div>
+                  </button>
+
+                  {/* Tasks & Schedules Manager */}
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setActiveTab("PENDING");
+                    }}
+                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
+                  >
+                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <ListChecksIcon size={12} />
+                    </div>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-[11px] font-semibold">Tasks & Recurring Schedules</span>
+                      <span class="text-[9px] text-zinc-500">{activePendingCount} Pending / Active</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -1637,11 +2147,11 @@ export function App() {
           onClick={() => setActiveTab("EXECUTE")}
           class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "EXECUTE"
-              ? "bg-gradient-to-r from-indigo-500/20 via-indigo-600/20 to-violet-500/20 border border-indigo-500/40 text-indigo-200 shadow-glow-sm"
+              ? currentAccentStyles.tabActive
               : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
-          <LightningIcon size={14} class={activeTab === "EXECUTE" ? "text-indigo-400" : "text-zinc-400"} />
+          <LightningIcon size={14} class={activeTab === "EXECUTE" ? currentAccentStyles.iconText : "text-zinc-400"} />
           <span>Execute Action</span>
         </button>
 
@@ -1649,14 +2159,14 @@ export function App() {
           onClick={() => setActiveTab("PENDING")}
           class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "PENDING"
-              ? "bg-gradient-to-r from-indigo-500/20 via-indigo-600/20 to-violet-500/20 border border-indigo-500/40 text-indigo-200 shadow-glow-sm"
+              ? currentAccentStyles.tabActive
               : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
-          <ListChecksIcon size={14} class={activeTab === "PENDING" ? "text-indigo-400" : "text-zinc-400"} />
+          <ListChecksIcon size={14} class={activeTab === "PENDING" ? currentAccentStyles.iconText : "text-zinc-400"} />
           <span>Tasks & Schedules</span>
           {activePendingCount > 0 && (
-            <span class="ml-0.5 px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] font-mono">
+            <span class={`ml-0.5 px-1.5 py-0.2 rounded-full border text-[9px] font-mono ${currentAccentStyles.badge}`}>
               {activePendingCount}
             </span>
           )}
@@ -1670,7 +2180,7 @@ export function App() {
           <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass">
             <div class="flex items-center justify-between">
               <label class="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
-                <SparkleIcon size={13} class="text-indigo-400" />
+                <SparkleIcon size={13} class="accent-text" />
                 <span>What should the agent do?</span>
               </label>
               {(() => {
@@ -1847,11 +2357,21 @@ export function App() {
                 </div>
                 <span class="ml-1 text-zinc-300">Execution Logs</span>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1.5">
+                {liveExecutionStepsRef.current.length > 0 && (
+                  <button
+                    onClick={handleOpenLiveReplay}
+                    class="text-[10px] bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition shadow-sm active:scale-95"
+                    title="Open Step-by-Step Visual Replay & Inspector"
+                  >
+                    <FilmReelIcon size={11} class="text-indigo-300" />
+                    <span>Replay Steps ({liveExecutionStepsRef.current.length})</span>
+                  </button>
+                )}
                 {logs.length > 0 && (
                   <button
                     onClick={() => setLogs([])}
-                    class="text-[10px] text-zinc-400 hover:text-zinc-200 transition"
+                    class="text-[10px] text-zinc-400 hover:text-zinc-200 transition px-1.5 py-0.5 rounded hover:bg-white/[0.05]"
                   >
                     Clear
                   </button>
@@ -1917,8 +2437,8 @@ export function App() {
               <span class="text-base font-bold text-zinc-100 font-mono mt-0.5">{activePendingCount}</span>
             </div>
             <div class="glass-card rounded-xl p-2.5 flex flex-col justify-between shadow-subtle">
-              <span class="text-[10px] text-indigo-400 font-medium">Scheduled</span>
-              <span class="text-base font-bold text-indigo-300 font-mono mt-0.5">{activeScheduledCount}</span>
+              <span class="text-[10px] accent-text font-medium">Scheduled</span>
+              <span class="text-base font-bold accent-text font-mono mt-0.5">{activeScheduledCount}</span>
             </div>
             <div class="glass-card rounded-xl p-2.5 flex flex-col justify-between shadow-subtle">
               <span class="text-[10px] text-amber-400 font-medium">Due Soon</span>
@@ -1933,7 +2453,7 @@ export function App() {
               class="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-zinc-200 hover:text-white hover:bg-white/[0.03] transition"
             >
               <div class="flex items-center gap-2">
-                <div class="w-5 h-5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                <div class="w-5 h-5 rounded-md accent-badge-subtle flex items-center justify-center">
                   <PlusIcon size={12} />
                 </div>
                 <span>Create New Task or Recurring Schedule</span>
@@ -1987,7 +2507,7 @@ export function App() {
                       onClick={() => setShowScheduleDetails(!showScheduleDetails)}
                       class={`w-full h-8 text-xs px-2 rounded-lg border inline-flex items-center justify-center gap-1.5 transition ${
                         showScheduleDetails || scheduleEnabled
-                          ? "bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-glow-sm"
+                          ? "accent-badge-subtle shadow-glow-sm"
                           : "glass-input text-zinc-300 hover:text-white"
                       }`}
                     >
@@ -2002,7 +2522,7 @@ export function App() {
                       onClick={() => setShowBillerDetails(!showBillerDetails)}
                       class={`w-full h-8 text-xs px-2 rounded-lg border inline-flex items-center justify-center gap-1.5 transition ${
                         showBillerDetails
-                          ? "bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-glow-sm"
+                          ? "accent-badge-subtle shadow-glow-sm"
                           : "glass-input text-zinc-300 hover:text-white"
                       }`}
                     >
@@ -2014,9 +2534,9 @@ export function App() {
 
                 {/* Schedule Drawer */}
                 {showScheduleDetails && (
-                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-indigo-500/30 animate-fade-in">
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-[var(--accent-border)] animate-fade-in">
                     <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
-                      <div class="flex items-center gap-1.5 text-indigo-300 font-semibold text-[11px]">
+                      <div class="flex items-center gap-1.5 accent-text font-semibold text-[11px]">
                         <CalendarIcon size={13} />
                         <span>Recurring Automation & Alarms</span>
                       </div>
@@ -2025,7 +2545,7 @@ export function App() {
                           type="checkbox"
                           checked={scheduleEnabled}
                           onChange={(e) => setScheduleEnabled((e.target as HTMLInputElement).checked)}
-                          class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                          class="rounded bg-zinc-900 border-zinc-700 accent-[var(--accent-color)] focus:ring-0 cursor-pointer"
                         />
                         <span>Enable Schedule</span>
                       </label>
@@ -2125,8 +2645,8 @@ export function App() {
 
                 {/* Profile Details Drawer */}
                 {showBillerDetails && (
-                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-indigo-500/30 animate-fade-in">
-                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-[var(--accent-border)] animate-fade-in">
+                    <div class="text-[11px] font-semibold accent-text flex items-center justify-between pb-1 border-b border-white/[0.06]">
                       <div class="flex items-center gap-1.5">
                         <UserIcon size={13} />
                         <span>User Profile & Autofill Credentials</span>
@@ -2138,7 +2658,7 @@ export function App() {
                           setIsCreatingNewProfile(false);
                           setIsProfileVaultModalOpen(true);
                         }}
-                        class="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
+                        class="text-[10px] accent-text hover:brightness-125 font-medium inline-flex items-center gap-1"
                       >
                         <IdentificationCardIcon size={11} />
                         <span>Manage Vault</span>
@@ -2147,8 +2667,8 @@ export function App() {
 
                     {/* Identity Preset Selector */}
                     {profiles.length > 0 && (
-                      <div class="bg-indigo-950/25 p-2 rounded-lg border border-indigo-500/20">
-                        <label class="text-[10px] text-indigo-300 block mb-1 font-semibold flex items-center gap-1">
+                      <div class="bg-white/[0.03] p-2 rounded-lg border border-[var(--accent-border)]">
+                        <label class="text-[10px] accent-text block mb-1 font-semibold flex items-center gap-1">
                           <SparkleIcon size={11} />
                           <span>Autofill from Identity Vault Preset</span>
                         </label>
@@ -2344,7 +2864,7 @@ export function App() {
                     onClick={() => setStatusFilter(st)}
                     class={`px-2 py-0.5 rounded-md font-medium whitespace-nowrap transition ${
                       statusFilter === st
-                        ? "bg-indigo-600 text-white shadow-sm border border-indigo-500/50"
+                        ? "accent-pill-active"
                         : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-white/[0.05]"
                     }`}
                   >
@@ -2388,7 +2908,7 @@ export function App() {
                       : t.status === "DUE_SOON"
                       ? "border-amber-500/40 bg-amber-950/10 shadow-[0_0_15px_-3px_rgba(245,158,11,0.15)]"
                       : t.schedule?.enabled
-                      ? "border-indigo-500/30 bg-indigo-950/10"
+                      ? "border-[var(--accent-border)] bg-white/[0.02]"
                       : "border-white/[0.07]"
                   }`}
                 >
@@ -2399,7 +2919,7 @@ export function App() {
                         type="checkbox"
                         checked={t.status === "COMPLETED"}
                         onChange={() => handleToggleTaskStatus(t)}
-                        class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
+                        class="rounded bg-zinc-900 border-zinc-700 accent-[var(--accent-color)] focus:ring-0 cursor-pointer shrink-0"
                       />
                       <span
                         class={`text-xs font-semibold truncate ${
@@ -2424,14 +2944,14 @@ export function App() {
                       )}
                       <button
                         onClick={() => handleOpenEditTask(t)}
-                        class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
+                        class="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/[0.05] transition"
                         title="Edit Task & Schedule"
                       >
                         <PencilSimpleIcon size={12} />
                       </button>
                       <button
                         onClick={() => handleCloneTask(t.id)}
-                        class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
+                        class="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/[0.05] transition"
                         title="Duplicate Task"
                       >
                         <CopyIcon size={12} />
@@ -2463,11 +2983,11 @@ export function App() {
 
                     {/* Schedule Badge */}
                     {t.schedule && t.schedule.enabled && (
-                      <span class="bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.2 rounded inline-flex items-center gap-1 font-medium">
+                      <span class="accent-badge-subtle px-1.5 py-0.2 rounded inline-flex items-center gap-1 font-medium">
                         {t.schedule.autoExecute ? (
                           <LightningIcon size={10} class="text-amber-400 shrink-0" />
                         ) : (
-                          <ClockIcon size={10} class="text-indigo-400 shrink-0" />
+                          <ClockIcon size={10} class="accent-text shrink-0" />
                         )}
                         <span>{formatScheduleText(t)}</span>
                       </span>
@@ -2475,7 +2995,7 @@ export function App() {
 
                     {/* Next Run Time */}
                     {t.schedule?.nextRunAt && (
-                      <span class="text-indigo-300/80 text-[10px] font-mono">
+                      <span class="accent-text text-[10px] font-mono">
                         Next: {new Date(t.schedule.nextRunAt).toLocaleDateString([], { month: "short", day: "numeric" })} {new Date(t.schedule.nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     )}
@@ -2620,9 +3140,18 @@ export function App() {
                                 <span class="text-zinc-500 font-mono">{new Date(run.runAt).toLocaleTimeString()}</span>
                               </div>
                               <p class="text-zinc-300 leading-tight">{run.summary || run.error}</p>
-                              <div class="text-[9px] text-zinc-500 flex gap-2 pt-0.5">
-                                <span>Duration: {(run.durationMs / 1000).toFixed(1)}s</span>
-                                <span>Steps: {run.stepsCount}</span>
+                              <div class="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[9px] text-zinc-500">
+                                <div class="flex gap-2">
+                                  <span>Duration: {(run.durationMs / 1000).toFixed(1)}s</span>
+                                  <span>Steps: {run.stepsCount || (run.steps ? run.steps.length : 1)}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleOpenHistoricalReplay(t.title, run)}
+                                  class="text-[9px] bg-indigo-600/25 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 px-2 py-0.5 rounded inline-flex items-center gap-1 transition"
+                                >
+                                  <FilmReelIcon size={10} />
+                                  <span>Replay & Inspect</span>
+                                </button>
                               </div>
                             </div>
                           ))}
@@ -3537,6 +4066,453 @@ export function App() {
                 class="px-4 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition"
               >
                 Close Vault
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Execution Replay & Step Inspector Modal */}
+      {isReplayModalOpen && (
+        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 overflow-hidden animate-fade-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg h-[92vh] flex flex-col overflow-hidden border border-indigo-500/40 bg-zinc-950/95 animate-scale-in">
+            {/* Replay Header */}
+            <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-glow-sm shrink-0">
+                  <FilmReelIcon size={13} />
+                </div>
+                <div class="flex flex-col min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs font-bold text-zinc-100 truncate">Execution Timeline Replay</span>
+                    <span
+                      class={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                        replayStatus === "SUCCESS"
+                          ? "bg-emerald-950/50 text-emerald-300 border-emerald-500/40"
+                          : replayStatus === "FAILED"
+                          ? "bg-rose-950/50 text-rose-300 border-rose-500/40"
+                          : replayStatus === "CANCELLED"
+                          ? "bg-zinc-900 text-zinc-400 border-zinc-700"
+                          : "bg-indigo-950/50 text-indigo-300 border-indigo-500/40 animate-pulse"
+                      }`}
+                    >
+                      {replayStatus === "SUCCESS"
+                        ? "Completed"
+                        : replayStatus === "FAILED"
+                        ? "Failed"
+                        : replayStatus === "CANCELLED"
+                        ? "Cancelled"
+                        : "Executing"}
+                    </span>
+                  </div>
+                  <span class="text-[10px] text-zinc-400 truncate max-w-[280px]">
+                    {replayTitle}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setIsReplayPlaying(false);
+                  setIsReplayModalOpen(false);
+                }}
+                class="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05] transition"
+              >
+                <XIcon size={15} />
+              </button>
+            </div>
+
+            {/* Replay Player Controls Bar */}
+            <div class="px-3.5 py-2 border-b border-white/[0.06] bg-zinc-900/60 flex items-center justify-between gap-2 shrink-0">
+              {/* Playback Buttons */}
+              <div class="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    setSelectedStepIndex(0);
+                    setIsReplayPlaying(false);
+                  }}
+                  disabled={replaySteps.length === 0 || selectedStepIndex === 0}
+                  class="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/[0.06] disabled:opacity-40 transition"
+                  title="First Step"
+                >
+                  <ArrowCounterClockwiseIcon size={12} />
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedStepIndex((prev) => Math.max(0, prev - 1));
+                    setIsReplayPlaying(false);
+                  }}
+                  disabled={replaySteps.length === 0 || selectedStepIndex === 0}
+                  class="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-40 transition"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => {
+                    if (selectedStepIndex >= replaySteps.length - 1) {
+                      setSelectedStepIndex(0);
+                    }
+                    setIsReplayPlaying(!isReplayPlaying);
+                  }}
+                  disabled={replaySteps.length <= 1}
+                  class={`px-2.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 transition ${
+                    isReplayPlaying
+                      ? "bg-amber-600 text-white shadow-glow-sm"
+                      : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-glow-sm"
+                  }`}
+                >
+                  {isReplayPlaying ? (
+                    <>
+                      <span>❚❚</span>
+                      <span>Pause</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon size={9} class="fill-current" />
+                      <span>{selectedStepIndex >= replaySteps.length - 1 ? "Replay" : "Play"}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedStepIndex((prev) => Math.min(replaySteps.length - 1, prev + 1));
+                    setIsReplayPlaying(false);
+                  }}
+                  disabled={replaySteps.length === 0 || selectedStepIndex >= replaySteps.length - 1}
+                  class="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-40 transition"
+                >
+                  Next
+                </button>
+              </div>
+
+              {/* Step Scrubber / Counter */}
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-[10px] text-zinc-400 font-mono shrink-0">
+                  Step <strong class="text-indigo-300">{replaySteps.length > 0 ? selectedStepIndex + 1 : 0}</strong> of{" "}
+                  {replaySteps.length}
+                </span>
+
+                {/* Speed Multiplier Selector */}
+                <select
+                  value={replayPlaybackSpeed}
+                  onChange={(e) => setReplayPlaybackSpeed(Number((e.target as HTMLSelectElement).value))}
+                  class="bg-zinc-950 border border-white/[0.08] text-[10px] text-zinc-300 rounded px-1.5 py-0.5"
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1.0x</option>
+                  <option value={1.5}>1.5x</option>
+                  <option value={2}>2.0x</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Timeline Scrubber Bar */}
+            {replaySteps.length > 0 && (
+              <div class="px-3.5 py-1.5 bg-zinc-950/80 border-b border-white/[0.05] shrink-0">
+                <div class="flex items-center gap-1 w-full overflow-x-auto py-1">
+                  {replaySteps.map((s, idx) => {
+                    const isCurrent = idx === selectedStepIndex;
+                    const isFailed = s.status === "FAILED" || s.actionType === "FAIL";
+                    return (
+                      <button
+                        key={s.id || idx}
+                        onClick={() => {
+                          setSelectedStepIndex(idx);
+                          setIsReplayPlaying(false);
+                        }}
+                        class={`h-2.5 rounded-full transition-all flex-1 min-w-[12px] relative group ${
+                          isCurrent
+                            ? isFailed
+                              ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] scale-y-125"
+                              : "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)] scale-y-125"
+                            : idx < selectedStepIndex
+                            ? "bg-indigo-700/60 hover:bg-indigo-600"
+                            : "bg-zinc-800 hover:bg-zinc-700"
+                        }`}
+                        title={`Step ${idx + 1}: [${s.actionType}] ${s.description}`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Main Replay Workspace (2-Column split: Step Inspector on top, Timeline List below) */}
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-3 bg-zinc-950/80 text-xs">
+              {replaySteps.length === 0 ? (
+                <div class="h-full flex flex-col items-center justify-center text-zinc-500 py-12 space-y-2 text-center">
+                  <FilmReelIcon size={28} class="text-zinc-600" />
+                  <p class="text-xs text-zinc-400">No execution steps recorded for this task run.</p>
+                  <p class="text-[11px] text-zinc-500">Run a goal to capture real-time DOM element actions.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Active Step Visual Inspector Card */}
+                  {(() => {
+                    const currentStep = replaySteps[selectedStepIndex] || replaySteps[0];
+                    if (!currentStep) return null;
+
+                    const isClick = currentStep.actionType === "CLICK";
+                    const isType = currentStep.actionType === "TYPE";
+                    const isSelect = currentStep.actionType === "SELECT";
+                    const isNavigate = currentStep.actionType === "NAVIGATE";
+                    const isComplete = currentStep.actionType === "COMPLETE";
+                    const isFail = currentStep.actionType === "FAIL" || currentStep.status === "FAILED";
+
+                    return (
+                      <div class="glass-card rounded-xl p-3 border border-indigo-500/30 bg-gradient-to-b from-indigo-950/20 to-zinc-950/60 shadow-glass space-y-2.5 animate-fade-in">
+                        {/* Step Header */}
+                        <div class="flex items-center justify-between pb-1.5 border-b border-white/[0.06]">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <span class="w-6 h-6 rounded-md bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+                              #{currentStep.stepNumber || selectedStepIndex + 1}
+                            </span>
+                            <div class="flex items-center gap-1.5 truncate">
+                              <span
+                                class={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  isClick
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                    : isType
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                    : isSelect
+                                    ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                                    : isNavigate
+                                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                                    : isComplete
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                    : isFail
+                                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                    : "bg-zinc-800 text-zinc-300 border border-zinc-700"
+                                }`}
+                              >
+                                {currentStep.actionType}
+                              </span>
+                              <span class="text-xs font-semibold text-zinc-100 truncate">
+                                {currentStep.targetName || currentStep.description}
+                              </span>
+                            </div>
+                          </div>
+                          <span class="text-[10px] text-zinc-500 font-mono shrink-0">
+                            {new Date(currentStep.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                        </div>
+
+                        {/* Step Action Description */}
+                        <div class="bg-zinc-950/70 rounded-lg p-2.5 border border-white/[0.05] space-y-1.5">
+                          <div class="text-[11px] text-zinc-200 leading-relaxed font-medium">
+                            {currentStep.description}
+                          </div>
+
+                          {/* Typed Input or Selected Value Highlight */}
+                          {currentStep.inputValue && (
+                            <div class="flex items-center gap-1.5 text-[11px] bg-indigo-950/40 border border-indigo-500/30 px-2 py-1 rounded text-indigo-200">
+                              <span class="text-zinc-400 font-mono text-[10px]">Value Applied:</span>
+                              <strong class="text-indigo-300 font-mono break-all">{currentStep.inputValue}</strong>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* DOM Element & Page Inspection Details */}
+                        <div class="grid grid-cols-2 gap-2 text-[10px]">
+                          {/* Target Element Selector */}
+                          <div class="bg-zinc-950/60 p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                            <span class="text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1">
+                              <CursorClickIcon size={10} class="text-indigo-400" />
+                              Target Locator
+                            </span>
+                            <p class="font-mono text-zinc-300 truncate text-[10px]" title={currentStep.targetSelector || "N/A"}>
+                              {currentStep.targetSelector || currentStep.targetRole || "Dynamic Document Node"}
+                            </p>
+                          </div>
+
+                          {/* Active Webpage URL */}
+                          <div class="bg-zinc-950/60 p-2 rounded-lg border border-white/[0.04] space-y-0.5">
+                            <span class="text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1">
+                              <BrowsersIcon size={10} class="text-cyan-400" />
+                              Page Snapshot
+                            </span>
+                            <p class="text-zinc-300 truncate text-[10px]" title={currentStep.url || currentStep.pageTitle || "Target Portal"}>
+                              {currentStep.pageTitle || currentStep.url || "Browser Tab Context"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Status & Timing Metrics */}
+                        <div class="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] text-zinc-500">
+                          <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center gap-1 text-emerald-400">
+                              <CheckCircleIcon size={11} />
+                              Verified Valid
+                            </span>
+                            {currentStep.elementsCount !== undefined && (
+                              <span class="text-zinc-400">
+                                {currentStep.elementsCount} interactive DOM nodes
+                              </span>
+                            )}
+                          </div>
+                          {currentStep.durationMs !== undefined && (
+                            <span class="font-mono text-zinc-400">
+                              +{(currentStep.durationMs / 1000).toFixed(2)}s step latency
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Complete Execution Step Timeline List */}
+                  <div class="space-y-1.5 pt-1">
+                    <div class="flex items-center justify-between pb-1">
+                      <span class="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <ListChecksIcon size={13} class="text-indigo-400" />
+                        <span>Execution Trace ({replaySteps.length} Steps)</span>
+                      </span>
+                      <span class="text-[10px] text-zinc-500">Click any step to inspect</span>
+                    </div>
+
+                    <div class="space-y-1.5 max-h-[220px] overflow-y-auto pr-0.5">
+                      {replaySteps.map((step, idx) => {
+                        const isSelected = idx === selectedStepIndex;
+                        const isFail = step.status === "FAILED" || step.actionType === "FAIL";
+                        return (
+                          <div
+                            key={step.id || idx}
+                            onClick={() => {
+                              setSelectedStepIndex(idx);
+                              setIsReplayPlaying(false);
+                            }}
+                            class={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 text-xs ${
+                              isSelected
+                                ? "bg-indigo-950/40 border-indigo-500/50 shadow-glow-sm"
+                                : "bg-zinc-950/50 border-white/[0.04] hover:border-white/[0.12] hover:bg-zinc-900/60"
+                            }`}
+                          >
+                            <div class="flex items-center gap-2 min-w-0">
+                              <span
+                                class={`w-5 h-5 rounded flex items-center justify-center font-mono font-bold text-[10px] shrink-0 ${
+                                  isSelected
+                                    ? "bg-indigo-600 text-white"
+                                    : "bg-zinc-900 text-zinc-400 border border-white/[0.06]"
+                                }`}
+                              >
+                                {step.stepNumber || idx + 1}
+                              </span>
+                              <span
+                                class={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase shrink-0 ${
+                                  isFail
+                                    ? "bg-rose-950 text-rose-400 border border-rose-800"
+                                    : step.actionType === "CLICK"
+                                    ? "bg-amber-950/60 text-amber-300 border border-amber-800/60"
+                                    : step.actionType === "TYPE"
+                                    ? "bg-blue-950/60 text-blue-300 border border-blue-800/60"
+                                    : "bg-zinc-900 text-zinc-300 border border-zinc-700"
+                                }`}
+                              >
+                                {step.actionType}
+                              </span>
+                              <span
+                                class={`truncate text-[11px] font-medium ${
+                                  isSelected ? "text-indigo-200" : "text-zinc-300"
+                                }`}
+                              >
+                                {step.description}
+                              </span>
+                            </div>
+
+                            <span class="text-[10px] text-zinc-500 font-mono shrink-0">
+                              {new Date(step.timestamp).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div class="flex items-center justify-between px-4 py-2.5 border-t border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <div class="text-[10px] text-zinc-400 font-mono">
+                Total Duration: <strong class="text-zinc-200">{(replayDurationMs / 1000).toFixed(1)}s</strong>
+              </div>
+              <button
+                onClick={() => {
+                  setIsReplayPlaying(false);
+                  setIsReplayModalOpen(false);
+                }}
+                class="px-3.5 py-1.5 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow-sm active:scale-95"
+              >
+                Close Replay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Appearance & Accent Theme Settings Modal */}
+      {isSettingsModalOpen && (
+        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-white/[0.12] bg-zinc-950/95 animate-scale-in">
+            {/* Modal Header */}
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-zinc-800 border border-white/[0.1] flex items-center justify-center text-zinc-300">
+                  <PaletteIcon size={13} />
+                </div>
+                <h3 class="text-xs font-bold text-zinc-100">Accent Color</h3>
+              </div>
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                class="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05] transition"
+              >
+                <XIcon size={14} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div class="p-3.5 space-y-3 text-xs bg-zinc-950/70">
+              {/* Color Grid Choice List */}
+              <div class="grid grid-cols-2 gap-2">
+                {ACCENT_THEME_OPTIONS.map((theme) => {
+                  const isSelected = accentColor === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => handleSelectAccentColor(theme.id)}
+                      class={`px-2.5 py-2 rounded-lg border text-left transition flex items-center justify-between group relative ${
+                        isSelected
+                          ? "bg-white/[0.08] border-white/[0.25] shadow-glow-sm"
+                          : "bg-zinc-900/60 border-white/[0.06] hover:border-white/[0.15] hover:bg-zinc-900/90"
+                      }`}
+                    >
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span
+                          class="w-3.5 h-3.5 rounded-full shadow-sm shrink-0 border border-white/20 transition group-hover:scale-110"
+                          style={{
+                            background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`
+                          }}
+                        />
+                        <span class={`text-xs font-medium truncate ${isSelected ? "text-white font-semibold" : "text-zinc-300"}`}>
+                          {theme.label}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <CheckIcon size={12} class="text-white shrink-0 ml-1" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div class="flex items-center justify-end px-4 py-2.5 border-t border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                class="px-4 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition font-medium"
+              >
+                Done
               </button>
             </div>
           </div>

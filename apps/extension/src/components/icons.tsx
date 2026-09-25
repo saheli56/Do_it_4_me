@@ -614,4 +614,164 @@ export function CheckIcon({ size = 16, class: className = "", ...props }: IconPr
   );
 }
 
+export function FilmReelIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM32,64H64V96H32ZM64,192H32V160H64Zm64-16a48,48,0,1,1,48-48A48.05,48.05,0,0,1,128,176Zm96,16H192V160h32Zm0-48H192V112h32Zm0-48H192V64h32ZM64,144H32V112H64ZM128,96a32,32,0,1,0,32,32A32,32,0,0,0,128,96Z" />
+    </svg>
+  );
+}
+
+export function CursorClickIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M211.88,141.22l-77.56-25.85L108.47,37.81a16.14,16.14,0,0,0-30.7,2.23l-39.73,159A16,16,0,0,0,53.52,218.4a16.27,16.27,0,0,0,5.74,1,16,16,0,0,0,13.79-7.9l43.23-74.12,77.56,25.85a16.1,16.1,0,0,0,18.04-22.01Zm-5.32,16-77.56-25.85a16.08,16.08,0,0,0-17.75,4.71L68,210.23,107.75,51.2l25.85,77.56a16.08,16.08,0,0,0,10.23,10.23Z" />
+    </svg>
+  );
+}
+
+export function ArrowCounterClockwiseIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M224,128a96,96,0,0,1-144.07,83.11,8,8,0,0,1,8-13.86A80,80,0,1,0,71.43,71.43L48,94.85V56a8,8,0,0,1,16,0v56a8,8,0,0,1-8,8H0a8,8,0,0,1,0-16H36.69L60.12,80.12A96,96,0,0,1,224,128Z" />
+    </svg>
+  );
+}
+
+export function EyeIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.35c18.83-18.82,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.47,133.47,0,0,1,231,128,133.33,133.33,0,0,1,207.93,158.75C185.67,180.81,158.78,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z" />
+    </svg>
+  );
+}
+
+export function CodeIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M69.66,197.66a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,0-11.32l56-56a8,8,0,0,1,11.32,11.32L19.31,136l50.35,50.34A8,8,0,0,1,69.66,197.66ZM253.66,130.34l-56-56a8,8,0,0,0-11.32,11.32L236.69,136l-50.35,50.34a8,8,0,0,0,11.32,11.32l56-56A8,8,0,0,0,253.66,130.34Z" />
+    </svg>
+  );
+}
+
+export function BrowsersIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M216,40H72A16,16,0,0,0,56,56V72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V184h16a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM184,200H40V120H184Zm0-96H40V88H184Zm32,64H200V88a16,16,0,0,0-16-16H72V56H216Z" />
+    </svg>
+  );
+}
+
+export function GearIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm103.27-41.52-20.9-7a79.25,79.25,0,0,0-7.85-18.95l10.87-19.26a8,8,0,0,0-1.46-9.74l-19.8-19.8a8,8,0,0,0-9.74-1.46L163.13,53.14a79.25,79.25,0,0,0-18.95-7.85l-7-20.9A8,8,0,0,0,129.58,18H101.42a8,8,0,0,0-7.6,6.39l-7,20.9a79.25,79.25,0,0,0-18.95,7.85L48.61,42.27a8,8,0,0,0-9.74,1.46l-19.8,19.8a8,8,0,0,0-1.46,9.74L28.48,92.53a79.25,79.25,0,0,0-7.85,18.95l-20.9,7A8,8,0,0,0-6.66,126.08v28.16a8,8,0,0,0,6.39,7.6l20.9,7a79.25,79.25,0,0,0,7.85,18.95l-10.87,19.26a8,8,0,0,0,1.46,9.74l19.8,19.8a8,8,0,0,0,9.74,1.46l19.26-10.87a79.25,79.25,0,0,0,18.95,7.85l7,20.9a8,8,0,0,0,7.6,6.39h28.16a8,8,0,0,0,7.6-6.39l7-20.9a79.25,79.25,0,0,0,18.95-7.85l19.26,10.87a8,8,0,0,0,9.74-1.46l19.8-19.8a8,8,0,0,0,1.46-9.74l-10.87-19.26a79.25,79.25,0,0,0,7.85-18.95l20.9-7a8,8,0,0,0,6.39-7.6V126.08A8,8,0,0,0,231.27,118.48ZM216,148.87l-21.73,7.28a8,8,0,0,0-5.18,5.18,63.58,63.58,0,0,1-10.8,18.7,8,8,0,0,0-.81,7.31l11.31,20-13.43,13.43-20-11.31a8,8,0,0,0-7.31.81,63.58,63.58,0,0,1-18.7,10.8,8,8,0,0,0-5.18,5.18L116.87,248H100.13l-7.28-21.73a8,8,0,0,0-5.18-5.18,63.58,63.58,0,0,1-18.7-10.8,8,8,0,0,0-7.31-.81l-20,11.31L28.23,207.36l11.31-20a8,8,0,0,0,.81-7.31,63.58,63.58,0,0,1-10.8-18.7,8,8,0,0,0-5.18-5.18L2.64,148.87V132.13l21.73-7.28a8,8,0,0,0,5.18-5.18,63.58,63.58,0,0,1,10.8-18.7,8,8,0,0,0,.81-7.31l-11.31-20,13.43-13.43,20,11.31a8,8,0,0,0,7.31-.81,63.58,63.58,0,0,1,18.7-10.8,8,8,0,0,0,5.18-5.18L99.13,33h16.74l7.28,21.73a8,8,0,0,0,5.18,5.18,63.58,63.58,0,0,1,18.7,10.8,8,8,0,0,0,7.31.81l20-11.31,13.43,13.43-11.31,20a8,8,0,0,0-.81,7.31,63.58,63.58,0,0,1,10.8,18.7,8,8,0,0,0,5.18,5.18L216,132.13Z" />
+    </svg>
+  );
+}
+
+export function PaletteIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M200,32H56A32,32,0,0,0,24,64V192a32,32,0,0,0,32,32H168a48.05,48.05,0,0,0,48-48V64A32,32,0,0,0,200,32Zm16,144a32,32,0,0,1-32,32H56a16,16,0,0,1-16-16V64A16,16,0,0,1,56,48H200a16,16,0,0,1,16,16Zm-136-72a16,16,0,1,1,16,16A16,16,0,0,1,80,104Zm48,0a16,16,0,1,1,16,16A16,16,0,0,1,128,104Zm48,0a16,16,0,1,1,16,16A16,16,0,0,1,176,104ZM80,152a16,16,0,1,1,16,16A16,16,0,0,1,80,152Zm48,0a16,16,0,1,1,16,16A16,16,0,0,1,128,152Z" />
+    </svg>
+  );
+}
+
+export function DotsThreeVerticalIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M128,60a16,16,0,1,0-16-16A16,16,0,0,0,128,60Zm0,52a16,16,0,1,0,16,16A16,16,0,0,0,128,112Zm0,68a16,16,0,1,0,16,16A16,16,0,0,0,128,180Z" />
+    </svg>
+  );
+}
+
+export function SlidersIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M120,40V16a8,8,0,0,0-16,0V40H40a8,8,0,0,0,0,16h64V80a8,8,0,0,0,16,0V56h96a8,8,0,0,0,0-16ZM216,120H168V96a8,8,0,0,0-16,0v64a8,8,0,0,0,16,0V136h48a8,8,0,0,0,0-16Zm0,64H104V160a8,8,0,0,0-16,0v64a8,8,0,0,0,16,0V200H40a8,8,0,0,0,0,16H88v24a8,8,0,0,0,16,0V216h112a8,8,0,0,0,0-16Z" />
+    </svg>
+  );
+}
+
 

@@ -149,6 +149,7 @@ export async function createServer() {
       durationMs: number;
       summary: string;
       stepsCount?: number;
+      steps?: import("@difm/shared").ExecutionStepDetail[];
       error?: string;
     };
 

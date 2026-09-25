@@ -39,6 +39,25 @@ export const TaskScheduleSchema = z.object({
 });
 export type TaskSchedule = z.infer<typeof TaskScheduleSchema>;
 
+export const ExecutionStepDetailSchema = z.object({
+  id: z.string(),
+  stepNumber: z.number(),
+  timestamp: z.number(),
+  actionType: z.string(),
+  description: z.string(),
+  targetName: z.string().optional(),
+  targetSelector: z.string().optional(),
+  targetRole: z.string().optional(),
+  inputValue: z.string().optional(),
+  url: z.string().optional(),
+  pageTitle: z.string().optional(),
+  status: z.enum(["SUCCESS", "FAILED", "APPROVED", "REJECTED", "SECURITY_PAUSED"]).default("SUCCESS"),
+  elementsCount: z.number().optional(),
+  error: z.string().optional(),
+  durationMs: z.number().optional()
+});
+export type ExecutionStepDetail = z.infer<typeof ExecutionStepDetailSchema>;
+
 export const TaskExecutionRecordSchema = z.object({
   id: z.string(),
   runAt: z.number(),
@@ -46,6 +65,7 @@ export const TaskExecutionRecordSchema = z.object({
   durationMs: z.number().default(0),
   summary: z.string(),
   stepsCount: z.number().default(1),
+  steps: z.array(ExecutionStepDetailSchema).optional().default([]),
   error: z.string().optional()
 });
 export type TaskExecutionRecord = z.infer<typeof TaskExecutionRecordSchema>;
