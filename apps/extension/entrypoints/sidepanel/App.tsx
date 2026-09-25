@@ -1717,8 +1717,9 @@ export function App() {
     }
   };
 
-  const handleCreatePendingTask = async () => {
-    if (!newTaskTitle.trim()) return;
+  const handleCreatePendingTask = async (opts?: { customTitle?: string; andRun?: boolean }) => {
+    const finalTitle = (opts?.customTitle || newTaskTitle || (billerProvider ? `Pay ${billerProvider} ${billerBillingCycle === "MONTHLY" ? "Monthly " : ""}Bill` : "Scheduled Utility Task")).trim();
+    if (!finalTitle) return;
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -1757,7 +1758,7 @@ export function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: newTaskTitle.trim(),
+          title: finalTitle,
           priority: newTaskPriority,
           category: billerType,
           dueDate: newTaskDueDate || undefined,
@@ -1774,6 +1775,14 @@ export function App() {
       if (billerPhone) localStorage.setItem("difm_user_phone", billerPhone);
       if (billerEmail) localStorage.setItem("difm_user_email", billerEmail);
 
+      const savedTitle = finalTitle;
+      const savedProvider = billerProvider;
+      const savedCycle = billerBillingCycle;
+      const savedType = billerType;
+      const savedPortalUrl = billerPortalUrl;
+      const savedConsumerNo = billerConsumerNo;
+      const savedAmount = billerAmount;
+
       setNewTaskTitle("");
       setNewTaskDueDate("");
       setNewTaskNotes("");
@@ -1787,9 +1796,59 @@ export function App() {
       setShowScheduleDetails(false);
       setScheduleEnabled(false);
       setIsCreateOpen(false);
-      fetchPendingTasks();
+      setExtractSuccess(null);
+      await fetchPendingTasks();
+
+      if (opts?.andRun) {
+        const goalPrompt = `Pay ${savedType.toLowerCase()} ${savedCycle.toLowerCase()} bill for ${savedProvider || savedTitle}. Details: First Name: ${billerFirstName} | Last Name: ${billerLastName} | Account/Consumer ID: ${savedConsumerNo} | Bill Amount: ${savedAmount} | Billing Timeline: ${savedCycle} Bill. Select the payment link matching this billing cycle (${savedCycle}). Stop and request user confirmation before final payment/card submission.`;
+        setActiveTab("EXECUTE");
+        setGoal(goalPrompt);
+        handleStartTask(goalPrompt, savedPortalUrl || undefined);
+      } else {
+        setSuccessMessage({
+          title: "Task Saved to Pending Tasks",
+          summary: `"${savedTitle}" was saved successfully and is ready for future runs or automated scheduling.`
+        });
+      }
     } catch {
       // Ignored
+    }
+  };
+
+  const handleSaveCurrentGoalAsTask = async () => {
+    if (!goal.trim()) return;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const customerFullName = [currentActiveProfile?.firstName, currentActiveProfile?.lastName].filter(Boolean).join(" ");
+      const autoTitle = goal.length > 55 ? goal.slice(0, 52).trim() + "..." : goal.trim();
+
+      await fetch("http://127.0.0.1:3001/pending-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: autoTitle,
+          priority: "HIGH",
+          category: "GENERAL",
+          notes: goal.trim(),
+          targetUrl: tab?.url || undefined,
+          billerInfo: {
+            firstName: currentActiveProfile?.firstName || undefined,
+            lastName: currentActiveProfile?.lastName || undefined,
+            customerName: customerFullName || undefined,
+            phoneNumber: currentActiveProfile?.phone || undefined,
+            emailAddress: currentActiveProfile?.email || undefined
+          }
+        })
+      });
+
+      setSuccessMessage({
+        title: "Task Saved Successfully",
+        summary: `Goal "${autoTitle}" has been saved to your Tasks tab for future one-click runs.`
+      });
+      fetchPendingTasks();
+    } catch (e) {
+      console.error("Failed to save goal as task:", e);
     }
   };
 
@@ -2509,14 +2568,25 @@ export function App() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => handleStartTask()}
-                disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
-                class="w-full shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
-              >
-                <PlayIcon size={13} class="text-white fill-current" />
-                <span>Execute Goal in Tab</span>
-              </button>
+              <div class="flex gap-2">
+                <button
+                  onClick={() => handleStartTask()}
+                  disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
+                  class="flex-1 shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
+                >
+                  <PlayIcon size={13} class="text-white fill-current" />
+                  <span>Execute Goal in Tab</span>
+                </button>
+                <button
+                  onClick={handleSaveCurrentGoalAsTask}
+                  disabled={!goal.trim()}
+                  title="Save current goal and profile into your Task List for future runs"
+                  class="px-3 h-9 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-800 text-zinc-200 hover:text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 border border-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
+                >
+                  <PlusIcon size={13} />
+                  <span>Save Task</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -2813,7 +2883,7 @@ export function App() {
                       </button>
                     </div>
 
-                    <div class="flex items-center gap-2 pt-1 border-t border-emerald-500/20">
+                    <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-500/20">
                       <button
                         onClick={() => {
                           const goalPrompt = `Pay ${billerType.toLowerCase()} ${billerBillingCycle.toLowerCase()} bill for ${billerProvider || newTaskTitle}. Details: First Name: ${billerFirstName} | Last Name: ${billerLastName} | Account/Consumer ID: ${billerConsumerNo} | Bill Amount: ${billerAmount} | Billing Timeline: ${billerBillingCycle} Bill. Select the payment link matching this billing cycle (${billerBillingCycle}). Stop and request user confirmation before final payment/card submission.`;
@@ -2821,12 +2891,18 @@ export function App() {
                           setGoal(goalPrompt);
                           handleStartTask(goalPrompt, billerPortalUrl || undefined);
                         }}
-                        class="shimmer-btn text-white text-xs font-bold px-3 py-1 rounded-lg inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+                        class="shimmer-btn text-white text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 shadow-sm active:scale-95"
                       >
                         <PlayIcon size={10} class="fill-current" />
                         <span>⚡ Run Task Now</span>
                       </button>
-                      <span class="text-[10px] text-emerald-200/70">Or review details below and click Save.</span>
+                      <button
+                        onClick={() => handleCreatePendingTask()}
+                        class="bg-emerald-800/80 hover:bg-emerald-700 active:bg-emerald-800 text-emerald-100 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-400/30 inline-flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                      >
+                        <PlusIcon size={12} />
+                        <span>💾 Save to Task List</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -3233,14 +3309,23 @@ export function App() {
                   class="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 resize-none leading-relaxed"
                 />
 
-                <button
-                  onClick={handleCreatePendingTask}
-                  disabled={!newTaskTitle.trim()}
-                  class="w-full shimmer-btn h-8 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 shadow-glow-sm active:scale-[0.98] transition"
-                >
-                  <PlusIcon size={13} />
-                  <span>Save Task & Schedule</span>
-                </button>
+                <div class="flex gap-2 pt-1">
+                  <button
+                    onClick={() => handleCreatePendingTask()}
+                    class="flex-1 shimmer-btn h-8 rounded-lg text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 shadow-glow-sm active:scale-[0.98] transition"
+                  >
+                    <PlusIcon size={13} />
+                    <span>💾 Save Task & Schedule</span>
+                  </button>
+                  <button
+                    onClick={() => handleCreatePendingTask({ andRun: true })}
+                    title="Save task and start execution immediately"
+                    class="px-3 h-8 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 shadow-sm active:scale-[0.98] transition border border-indigo-400/30"
+                  >
+                    <PlayIcon size={11} class="fill-current" />
+                    <span>⚡ Save & Run</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
