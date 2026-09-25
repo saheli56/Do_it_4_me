@@ -95,9 +95,9 @@ function getDefaultInitialProfiles(): UserProfile[] {
       icon: "user",
       color: "indigo",
       firstName: fn || "Saheli",
-      lastName: ln || "",
-      email: email || "",
-      phone: phone || "",
+      lastName: ln || "Mukherjee",
+      email: email || "saheli56@gmail.com",
+      phone: phone || "+91 9876543210",
       address: {
         street: "",
         city: "Kolkata",
@@ -619,9 +619,9 @@ export function App() {
       const fn = localStorage.getItem("difm_user_first_name");
       if (fn) return fn;
       const legacy = localStorage.getItem("difm_user_name") || "";
-      return legacy.split(" ")[0] || "";
+      return legacy.split(" ")[0] || "Saheli";
     } catch {
-      return "";
+      return "Saheli";
     }
   });
   const [billerLastName, setBillerLastName] = useState(() => {
@@ -630,23 +630,23 @@ export function App() {
       if (ln) return ln;
       const legacy = localStorage.getItem("difm_user_name") || "";
       const parts = legacy.split(" ");
-      return parts.length > 1 ? parts.slice(1).join(" ") : "";
+      return parts.length > 1 ? parts.slice(1).join(" ") : "Mukherjee";
     } catch {
-      return "";
+      return "Mukherjee";
     }
   });
   const [billerPhone, setBillerPhone] = useState(() => {
     try {
-      return localStorage.getItem("difm_user_phone") || "";
+      return localStorage.getItem("difm_user_phone") || "+91 9876543210";
     } catch {
-      return "";
+      return "+91 9876543210";
     }
   });
   const [billerEmail, setBillerEmail] = useState(() => {
     try {
-      return localStorage.getItem("difm_user_email") || "";
+      return localStorage.getItem("difm_user_email") || "saheli56@gmail.com";
     } catch {
-      return "";
+      return "saheli56@gmail.com";
     }
   });
   const [billerInstructions, setBillerInstructions] = useState("");
@@ -2421,14 +2421,16 @@ export function App() {
                 return (
                   <button
                     onClick={() => {
-                      setEditingProfile(null);
-                      setIsCreatingNewProfile(false);
-                      setIsProfileVaultModalOpen(true);
+                      if (currentActiveProfile) {
+                        handleOpenEditProfile(currentActiveProfile);
+                      } else {
+                        setIsProfileVaultModalOpen(true);
+                      }
                     }}
-                    class={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border transition active:scale-95 ${
+                    class={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border transition active:scale-95 hover:brightness-110 ${
                       currentProfileStyles.badge
                     }`}
-                    title="Active Identity profile autofill settings"
+                    title="Edit Personal Preferences & Profile Settings"
                   >
                     {renderProfileIcon(currentActiveProfile?.icon, 10)}
                     <span class="truncate max-w-[90px]">{currentActiveProfile?.label || "Personal"}</span>
