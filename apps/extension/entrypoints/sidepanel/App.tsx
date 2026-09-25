@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "preact/hooks";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "@difm/shared";
 import type {
   TaskState,
   ServerMessage,
@@ -18,8 +19,7 @@ import type {
   ExecutionStepDetail,
   BillExtractResult,
   BillingCycle,
-  NotificationSettings,
-  DEFAULT_NOTIFICATION_SETTINGS
+  NotificationSettings
 } from "@difm/shared";
 import {
   LightningIcon,
