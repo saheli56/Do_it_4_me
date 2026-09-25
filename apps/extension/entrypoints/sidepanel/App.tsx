@@ -8,7 +8,12 @@ import type {
   TaskCategory,
   ScheduleFrequency,
   PageObservation,
-  SecurityChallenge
+  SecurityChallenge,
+  UserProfile,
+  CreateUserProfile,
+  UpdateUserProfile,
+  ProfileIconType,
+  ProfileColor
 } from "@difm/shared";
 import {
   LightningIcon,
@@ -37,8 +42,188 @@ import {
   MagnifyingGlassIcon,
   CopyIcon,
   CaretDownIcon,
-  CaretUpIcon
+  CaretUpIcon,
+  HouseIcon,
+  BriefcaseIcon,
+  IdentificationCardIcon,
+  StarIcon,
+  CheckIcon,
+  CreditCardIcon
 } from "../../src/components/icons";
+
+function getDefaultInitialProfiles(): UserProfile[] {
+  let fn = "";
+  let ln = "";
+  let phone = "";
+  let email = "";
+  try {
+    fn = localStorage.getItem("difm_user_first_name") || "";
+    ln = localStorage.getItem("difm_user_last_name") || "";
+    if (!fn && !ln) {
+      const legacy = localStorage.getItem("difm_user_name") || "";
+      const parts = legacy.split(" ");
+      fn = parts[0] || "";
+      ln = parts.slice(1).join(" ") || "";
+    }
+    phone = localStorage.getItem("difm_user_phone") || "";
+    email = localStorage.getItem("difm_user_email") || "";
+  } catch {}
+
+  const now = Date.now();
+  return [
+    {
+      id: "profile-personal",
+      label: "Personal",
+      isDefault: true,
+      icon: "user",
+      color: "indigo",
+      firstName: fn || "Saheli",
+      lastName: ln || "",
+      email: email || "",
+      phone: phone || "",
+      address: {
+        street: "",
+        city: "Kolkata",
+        state: "West Bengal",
+        postalCode: "700001",
+        country: "India"
+      },
+      business: {},
+      customAttributes: {},
+      notes: "Primary personal profile for forms, shopping, and bills.",
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: "profile-work",
+      label: "Work & Business",
+      isDefault: false,
+      icon: "briefcase",
+      color: "blue",
+      firstName: fn || "",
+      lastName: ln || "",
+      email: email ? email.replace("@gmail.com", "@company.com") : "",
+      phone: phone || "",
+      address: {
+        city: "Bangalore",
+        state: "Karnataka",
+        country: "India"
+      },
+      business: {
+        companyName: "Acme Technologies LLC",
+        department: "Engineering",
+        designation: "Software Engineer",
+        taxIdOrGst: "19ABCDE1234F1Z5"
+      },
+      customAttributes: {},
+      notes: "Corporate business profile for invoices, vendor portals, and tax filings.",
+      createdAt: now + 1,
+      updatedAt: now + 1
+    },
+    {
+      id: "profile-family",
+      label: "Family & Household",
+      isDefault: false,
+      icon: "house",
+      color: "emerald",
+      firstName: fn || "Family",
+      lastName: ln || "Home",
+      email: email || "",
+      phone: phone || "",
+      address: {
+        city: "Kolkata",
+        country: "India"
+      },
+      business: {},
+      customAttributes: {},
+      notes: "Household utilities, electricity, broadband, and family services.",
+      createdAt: now + 2,
+      updatedAt: now + 2
+    }
+  ];
+}
+
+function renderProfileIcon(iconName?: ProfileIconType, size = 13, className = "") {
+  switch (iconName) {
+    case "briefcase":
+      return <BriefcaseIcon size={size} class={className} />;
+    case "house":
+      return <HouseIcon size={size} class={className} />;
+    case "sparkle":
+      return <SparkleIcon size={size} class={className} />;
+    case "buildings":
+      return <BuildingsIcon size={size} class={className} />;
+    case "credit-card":
+      return <CreditCardIcon size={size} class={className} />;
+    case "tag":
+      return <TagIcon size={size} class={className} />;
+    case "user":
+    default:
+      return <UserIcon size={size} class={className} />;
+  }
+}
+
+function getProfileColorStyles(color?: ProfileColor) {
+  switch (color) {
+    case "emerald":
+      return {
+        badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+        dot: "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]",
+        border: "border-emerald-500/40",
+        bgLight: "bg-emerald-950/30",
+        accentText: "text-emerald-300"
+      };
+    case "amber":
+      return {
+        badge: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+        dot: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]",
+        border: "border-amber-500/40",
+        bgLight: "bg-amber-950/30",
+        accentText: "text-amber-300"
+      };
+    case "violet":
+      return {
+        badge: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+        dot: "bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.6)]",
+        border: "border-violet-500/40",
+        bgLight: "bg-violet-950/30",
+        accentText: "text-violet-300"
+      };
+    case "rose":
+      return {
+        badge: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+        dot: "bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.6)]",
+        border: "border-rose-500/40",
+        bgLight: "bg-rose-950/30",
+        accentText: "text-rose-300"
+      };
+    case "blue":
+      return {
+        badge: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+        dot: "bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.6)]",
+        border: "border-blue-500/40",
+        bgLight: "bg-blue-950/30",
+        accentText: "text-blue-300"
+      };
+    case "cyan":
+      return {
+        badge: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+        dot: "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]",
+        border: "border-cyan-500/40",
+        bgLight: "bg-cyan-950/30",
+        accentText: "text-cyan-300"
+      };
+    case "indigo":
+    default:
+      return {
+        badge: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+        dot: "bg-indigo-400 shadow-[0_0_6px_rgba(129,140,248,0.6)]",
+        border: "border-indigo-500/40",
+        bgLight: "bg-indigo-950/30",
+        accentText: "text-indigo-300"
+      };
+  }
+}
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"EXECUTE" | "PENDING">("EXECUTE");
@@ -55,6 +240,52 @@ export function App() {
     title: string;
     summary: string;
   } | null>(null);
+
+  // Identity Profile Vault State
+  const [profiles, setProfiles] = useState<UserProfile[]>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_user_profiles");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return getDefaultInitialProfiles();
+    } catch {
+      return getDefaultInitialProfiles();
+    }
+  });
+
+  const [activeProfileId, setActiveProfileId] = useState<string>(() => {
+    try {
+      return localStorage.getItem("difm_active_profile_id") || "profile-personal";
+    } catch {
+      return "profile-personal";
+    }
+  });
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  const [isProfileVaultModalOpen, setIsProfileVaultModalOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<UserProfile | null>(null);
+  const [isCreatingNewProfile, setIsCreatingNewProfile] = useState(false);
+
+  // Profile Editor Form State
+  const [profLabel, setProfLabel] = useState("");
+  const [profIcon, setProfIcon] = useState<ProfileIconType>("user");
+  const [profColor, setProfColor] = useState<ProfileColor>("indigo");
+  const [profFirstName, setProfFirstName] = useState("");
+  const [profLastName, setProfLastName] = useState("");
+  const [profEmail, setProfEmail] = useState("");
+  const [profPhone, setProfPhone] = useState("");
+  const [profStreet, setProfStreet] = useState("");
+  const [profCity, setProfCity] = useState("");
+  const [profState, setProfState] = useState("");
+  const [profPostalCode, setProfPostalCode] = useState("");
+  const [profCountry, setProfCountry] = useState("");
+  const [profCompanyName, setProfCompanyName] = useState("");
+  const [profTaxId, setProfTaxId] = useState("");
+  const [profDepartment, setProfDepartment] = useState("");
+  const [profDesignation, setProfDesignation] = useState("");
+  const [profNotes, setProfNotes] = useState("");
+  const [profCustomAttrs, setProfCustomAttrs] = useState<Array<{ key: string; value: string }>>([]);
 
   // Pending Tasks & Scheduling State
   const [pendingTasks, setPendingTasks] = useState<PendingTaskItem[]>(() => {
@@ -74,6 +305,7 @@ export function App() {
   const [newTaskDueDate, setNewTaskDueDate] = useState("");
   const [newTaskNotes, setNewTaskNotes] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>("MEDIUM");
+  const [newTaskProfileId, setNewTaskProfileId] = useState<string>("");
   const [showBillerDetails, setShowBillerDetails] = useState(false);
   const [showScheduleDetails, setShowScheduleDetails] = useState(false);
 
@@ -142,6 +374,7 @@ export function App() {
   const [editCategory, setEditCategory] = useState<TaskCategory>("GENERAL");
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editProfileId, setEditProfileId] = useState<string>("");
   const [editProvider, setEditProvider] = useState("");
   const [editConsumerNo, setEditConsumerNo] = useState("");
   const [editSubdivision, setEditSubdivision] = useState("");
@@ -171,6 +404,291 @@ export function App() {
   const executionStartTimeRef = useRef<number>(0);
   const executionStepsCountRef = useRef<number>(0);
   const logContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:3001/profiles");
+      if (res.ok) {
+        const data = (await res.json()) as { profiles: UserProfile[]; defaultProfileId: string };
+        if (Array.isArray(data.profiles)) {
+          setProfiles(data.profiles);
+          localStorage.setItem("difm_saved_user_profiles", JSON.stringify(data.profiles));
+          if (!activeProfileId || !data.profiles.some((p) => p.id === activeProfileId)) {
+            const nextActive = data.defaultProfileId || data.profiles[0]?.id || "profile-personal";
+            setActiveProfileId(nextActive);
+            localStorage.setItem("difm_active_profile_id", nextActive);
+          }
+        }
+      }
+    } catch {
+      // Retain cached profiles
+    }
+  };
+
+  const handleSelectActiveProfile = (id: string) => {
+    setActiveProfileId(id);
+    localStorage.setItem("difm_active_profile_id", id);
+    setIsProfileDropdownOpen(false);
+    const prof = profiles.find((p) => p.id === id);
+    if (prof) {
+      if (prof.firstName) {
+        setBillerFirstName(prof.firstName);
+        localStorage.setItem("difm_user_first_name", prof.firstName);
+      }
+      if (prof.lastName) {
+        setBillerLastName(prof.lastName);
+        localStorage.setItem("difm_user_last_name", prof.lastName);
+      }
+      if (prof.phone) {
+        setBillerPhone(prof.phone);
+        localStorage.setItem("difm_user_phone", prof.phone);
+      }
+      if (prof.email) {
+        setBillerEmail(prof.email);
+        localStorage.setItem("difm_user_email", prof.email);
+      }
+    }
+  };
+
+  const handleSetDefaultProfile = async (id: string) => {
+    const updated = profiles.map((p) => ({
+      ...p,
+      isDefault: p.id === id
+    }));
+    setProfiles(updated);
+    localStorage.setItem("difm_saved_user_profiles", JSON.stringify(updated));
+
+    try {
+      const res = await fetch(`http://127.0.0.1:3001/profiles/${id}/set-default`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        fetchProfiles();
+      }
+    } catch {}
+  };
+
+  const handleOpenCreateProfile = () => {
+    setEditingProfile(null);
+    setIsCreatingNewProfile(true);
+    setProfLabel("");
+    setProfIcon("user");
+    setProfColor("indigo");
+    setProfFirstName("");
+    setProfLastName("");
+    setProfEmail("");
+    setProfPhone("");
+    setProfStreet("");
+    setProfCity("");
+    setProfState("");
+    setProfPostalCode("");
+    setProfCountry("");
+    setProfCompanyName("");
+    setProfTaxId("");
+    setProfDepartment("");
+    setProfDesignation("");
+    setProfNotes("");
+    setProfCustomAttrs([]);
+    setIsProfileVaultModalOpen(true);
+    setIsProfileDropdownOpen(false);
+  };
+
+  const handleOpenEditProfile = (profile: UserProfile) => {
+    setEditingProfile(profile);
+    setIsCreatingNewProfile(false);
+    setProfLabel(profile.label || "");
+    setProfIcon(profile.icon || "user");
+    setProfColor(profile.color || "indigo");
+    setProfFirstName(profile.firstName || "");
+    setProfLastName(profile.lastName || "");
+    setProfEmail(profile.email || "");
+    setProfPhone(profile.phone || "");
+    setProfStreet(profile.address?.street || "");
+    setProfCity(profile.address?.city || "");
+    setProfState(profile.address?.state || "");
+    setProfPostalCode(profile.address?.postalCode || "");
+    setProfCountry(profile.address?.country || "");
+    setProfCompanyName(profile.business?.companyName || "");
+    setProfTaxId(profile.business?.taxIdOrGst || "");
+    setProfDepartment(profile.business?.department || "");
+    setProfDesignation(profile.business?.designation || "");
+    setProfNotes(profile.notes || "");
+    const attrs = profile.customAttributes
+      ? Object.entries(profile.customAttributes).map(([k, v]) => ({ key: k, value: v }))
+      : [];
+    setProfCustomAttrs(attrs);
+    setIsProfileVaultModalOpen(true);
+    setIsProfileDropdownOpen(false);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profLabel.trim()) return;
+
+    const customAttributes: Record<string, string> = {};
+    profCustomAttrs.forEach((attr) => {
+      if (attr.key.trim() && attr.value.trim()) {
+        customAttributes[attr.key.trim()] = attr.value.trim();
+      }
+    });
+
+    const now = Date.now();
+    let updatedProfile: UserProfile;
+
+    if (editingProfile) {
+      updatedProfile = {
+        ...editingProfile,
+        label: profLabel.trim(),
+        icon: profIcon,
+        color: profColor,
+        firstName: profFirstName.trim(),
+        lastName: profLastName.trim(),
+        email: profEmail.trim(),
+        phone: profPhone.trim(),
+        address: {
+          street: profStreet.trim() || undefined,
+          city: profCity.trim() || undefined,
+          state: profState.trim() || undefined,
+          postalCode: profPostalCode.trim() || undefined,
+          country: profCountry.trim() || undefined
+        },
+        business: {
+          companyName: profCompanyName.trim() || undefined,
+          taxIdOrGst: profTaxId.trim() || undefined,
+          department: profDepartment.trim() || undefined,
+          designation: profDesignation.trim() || undefined
+        },
+        customAttributes,
+        notes: profNotes.trim() || undefined,
+        updatedAt: now
+      };
+    } else {
+      updatedProfile = {
+        id: `profile-${now}-${Math.random().toString(36).slice(2, 7)}`,
+        label: profLabel.trim(),
+        isDefault: profiles.length === 0,
+        icon: profIcon,
+        color: profColor,
+        firstName: profFirstName.trim(),
+        lastName: profLastName.trim(),
+        email: profEmail.trim(),
+        phone: profPhone.trim(),
+        address: {
+          street: profStreet.trim() || undefined,
+          city: profCity.trim() || undefined,
+          state: profState.trim() || undefined,
+          postalCode: profPostalCode.trim() || undefined,
+          country: profCountry.trim() || undefined
+        },
+        business: {
+          companyName: profCompanyName.trim() || undefined,
+          taxIdOrGst: profTaxId.trim() || undefined,
+          department: profDepartment.trim() || undefined,
+          designation: profDesignation.trim() || undefined
+        },
+        customAttributes,
+        notes: profNotes.trim() || undefined,
+        createdAt: now,
+        updatedAt: now
+      };
+    }
+
+    // 1. Immediately update state and localStorage so changes are never lost
+    let nextProfiles: UserProfile[];
+    if (editingProfile) {
+      nextProfiles = profiles.map((p) => (p.id === editingProfile.id ? updatedProfile : p));
+    } else {
+      nextProfiles = [...profiles, updatedProfile];
+      setActiveProfileId(updatedProfile.id);
+      localStorage.setItem("difm_active_profile_id", updatedProfile.id);
+    }
+    setProfiles(nextProfiles);
+    localStorage.setItem("difm_saved_user_profiles", JSON.stringify(nextProfiles));
+
+    // If editing the active profile or personal identity, sync contact states
+    if (editingProfile ? editingProfile.id === activeProfileId : true) {
+      if (profFirstName.trim()) {
+        setBillerFirstName(profFirstName.trim());
+        localStorage.setItem("difm_user_first_name", profFirstName.trim());
+      }
+      if (profLastName.trim()) {
+        setBillerLastName(profLastName.trim());
+        localStorage.setItem("difm_user_last_name", profLastName.trim());
+      }
+      const full = [profFirstName.trim(), profLastName.trim()].filter(Boolean).join(" ");
+      if (full) localStorage.setItem("difm_user_name", full);
+      if (profPhone.trim()) {
+        setBillerPhone(profPhone.trim());
+        localStorage.setItem("difm_user_phone", profPhone.trim());
+      }
+      if (profEmail.trim()) {
+        setBillerEmail(profEmail.trim());
+        localStorage.setItem("difm_user_email", profEmail.trim());
+      }
+    }
+
+    setEditingProfile(null);
+    setIsCreatingNewProfile(false);
+
+    // 2. Sync to server in background if available
+    try {
+      if (editingProfile) {
+        await fetch(`http://127.0.0.1:3001/profiles/${editingProfile.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedProfile)
+        });
+      } else {
+        await fetch("http://127.0.0.1:3001/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedProfile)
+        });
+      }
+      fetchProfiles();
+    } catch {}
+  };
+
+  const handleDeleteProfile = async (id: string) => {
+    const remaining = profiles.filter((p) => p.id !== id);
+    setProfiles(remaining);
+    localStorage.setItem("difm_saved_user_profiles", JSON.stringify(remaining));
+
+    if (activeProfileId === id && remaining.length > 0) {
+      setActiveProfileId(remaining[0].id);
+      localStorage.setItem("difm_active_profile_id", remaining[0].id);
+    }
+
+    try {
+      await fetch(`http://127.0.0.1:3001/profiles/${id}`, {
+        method: "DELETE"
+      });
+      fetchProfiles();
+    } catch {}
+  };
+
+
+  const handleApplyProfileToCreateForm = (profileId: string) => {
+    setNewTaskProfileId(profileId);
+    const prof = profiles.find((p) => p.id === profileId);
+    if (prof) {
+      if (prof.firstName) setBillerFirstName(prof.firstName);
+      if (prof.lastName) setBillerLastName(prof.lastName);
+      if (prof.phone) setBillerPhone(prof.phone);
+      if (prof.email) setBillerEmail(prof.email);
+    }
+  };
+
+  const handleApplyProfileToEditForm = (profileId: string) => {
+    setEditProfileId(profileId);
+    const prof = profiles.find((p) => p.id === profileId);
+    if (prof) {
+      if (prof.firstName) setEditFirstName(prof.firstName);
+      if (prof.lastName) setEditLastName(prof.lastName);
+      if (prof.phone) setEditPhone(prof.phone);
+      if (prof.email) setEditEmail(prof.email);
+    }
+  };
+
 
   const fetchPendingTasks = async () => {
     try {
@@ -457,6 +975,7 @@ export function App() {
 
   useEffect(() => {
     setupSocket();
+    fetchProfiles();
     fetchPendingTasks();
 
     const handleRuntimeMessage = (message: any) => {
@@ -486,8 +1005,36 @@ export function App() {
   }, [logs]);
 
   const handleStartTask = async (customGoal?: string, customTargetUrl?: string, pendingTaskId?: string) => {
-    const taskGoal = customGoal || goal;
+    let taskGoal = customGoal || goal;
     if (!taskGoal.trim()) return;
+
+    // Inject active profile credentials if executing a raw user prompt
+    const activeProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+    if (!customGoal && activeProfile) {
+      const parts: string[] = [];
+      if (activeProfile.firstName) parts.push(`First Name: ${activeProfile.firstName}`);
+      if (activeProfile.lastName) parts.push(`Last Name: ${activeProfile.lastName}`);
+      const fullName = [activeProfile.firstName, activeProfile.lastName].filter(Boolean).join(" ");
+      if (fullName) parts.push(`Full Name: ${fullName}`);
+      if (activeProfile.email) parts.push(`Email: ${activeProfile.email}`);
+      if (activeProfile.phone) parts.push(`Phone: ${activeProfile.phone}`);
+      if (activeProfile.address?.street) parts.push(`Street: ${activeProfile.address.street}`);
+      if (activeProfile.address?.city) parts.push(`City: ${activeProfile.address.city}`);
+      if (activeProfile.address?.state) parts.push(`State: ${activeProfile.address.state}`);
+      if (activeProfile.address?.postalCode) parts.push(`Postal/PIN Code: ${activeProfile.address.postalCode}`);
+      if (activeProfile.address?.country) parts.push(`Country: ${activeProfile.address.country}`);
+      if (activeProfile.business?.companyName) parts.push(`Company: ${activeProfile.business.companyName}`);
+      if (activeProfile.business?.taxIdOrGst) parts.push(`GST/Tax ID: ${activeProfile.business.taxIdOrGst}`);
+      if (activeProfile.business?.designation) parts.push(`Designation: ${activeProfile.business.designation}`);
+      if (activeProfile.customAttributes) {
+        for (const [k, v] of Object.entries(activeProfile.customAttributes)) {
+          if (k && v) parts.push(`${k}: ${v}`);
+        }
+      }
+      if (parts.length > 0) {
+        taskGoal = `${taskGoal}. Identity Profile (${activeProfile.label}): [${parts.join(", ")}]. Clear and override any demo or placeholder fields with these credentials.`;
+      }
+    }
 
     setLogs([]);
     setTaskState("PLANNING");
@@ -514,6 +1061,7 @@ export function App() {
       if (!res.ok) {
         throw new Error("Failed to start task on server");
       }
+
 
       const data = (await res.json()) as { taskId: string; state: TaskState };
       setTaskId(data.taskId);
@@ -792,27 +1340,62 @@ export function App() {
     let formulatedGoal = task.title;
     const targetUrl = task.billerInfo?.portalUrl || task.targetUrl;
 
-    if (task.billerInfo) {
-      const parts: string[] = [];
-      const firstName = task.billerInfo.firstName || (task.billerInfo.customerName ? task.billerInfo.customerName.split(" ")[0] : billerFirstName);
-      const lastName = task.billerInfo.lastName || (task.billerInfo.customerName ? task.billerInfo.customerName.split(" ").slice(1).join(" ") : billerLastName);
-      const fullName = [firstName, lastName].filter(Boolean).join(" ") || task.billerInfo.customerName || [billerFirstName, billerLastName].filter(Boolean).join(" ");
-      const phone = task.billerInfo.phoneNumber || billerPhone;
-      const email = task.billerInfo.emailAddress || billerEmail;
+    const associatedProfile = task.billerInfo?.profileId
+      ? profiles.find((p) => p.id === task.billerInfo?.profileId)
+      : profiles.find((p) => p.id === activeProfileId) || profiles[0];
 
-      if (firstName) parts.push(`User First Name: ${firstName}`);
-      if (lastName) parts.push(`User Last Name: ${lastName}`);
-      if (fullName) parts.push(`User Full Name: ${fullName}`);
+    if (task.billerInfo || associatedProfile) {
+      const parts: string[] = [];
+      const firstName =
+        task.billerInfo?.firstName ||
+        (task.billerInfo?.customerName ? task.billerInfo.customerName.split(" ")[0] : "") ||
+        associatedProfile?.firstName ||
+        billerFirstName;
+      const lastName =
+        task.billerInfo?.lastName ||
+        (task.billerInfo?.customerName ? task.billerInfo.customerName.split(" ").slice(1).join(" ") : "") ||
+        associatedProfile?.lastName ||
+        billerLastName;
+      const fullName =
+        [firstName, lastName].filter(Boolean).join(" ") ||
+        task.billerInfo?.customerName ||
+        [billerFirstName, billerLastName].filter(Boolean).join(" ");
+      const phone = task.billerInfo?.phoneNumber || associatedProfile?.phone || billerPhone;
+      const email = task.billerInfo?.emailAddress || associatedProfile?.email || billerEmail;
+
+      if (firstName) parts.push(`First Name: ${firstName}`);
+      if (lastName) parts.push(`Last Name: ${lastName}`);
+      if (fullName) parts.push(`Full Name: ${fullName}`);
       if (phone) parts.push(`Phone No: ${phone}`);
       if (email) parts.push(`Email: ${email}`);
-      if (task.billerInfo.providerName) parts.push(`Site/Provider: ${task.billerInfo.providerName}`);
-      if (task.billerInfo.consumerNumber) parts.push(`Account/Consumer ID: ${task.billerInfo.consumerNumber}`);
-      if (task.billerInfo.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
-      if (task.billerInfo.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
+
+      if (associatedProfile?.address?.street) parts.push(`Street: ${associatedProfile.address.street}`);
+      if (associatedProfile?.address?.city) parts.push(`City: ${associatedProfile.address.city}`);
+      if (associatedProfile?.address?.state) parts.push(`State: ${associatedProfile.address.state}`);
+      if (associatedProfile?.address?.postalCode) parts.push(`Postal/PIN Code: ${associatedProfile.address.postalCode}`);
+      if (associatedProfile?.business?.companyName) parts.push(`Company: ${associatedProfile.business.companyName}`);
+      if (associatedProfile?.business?.taxIdOrGst) parts.push(`GST/Tax ID: ${associatedProfile.business.taxIdOrGst}`);
+      if (associatedProfile?.customAttributes) {
+        for (const [k, v] of Object.entries(associatedProfile.customAttributes)) {
+          if (k && v) parts.push(`${k}: ${v}`);
+        }
+      }
+
+      if (task.billerInfo?.providerName) parts.push(`Site/Provider: ${task.billerInfo.providerName}`);
+      if (task.billerInfo?.consumerNumber) parts.push(`Account/Consumer ID: ${task.billerInfo.consumerNumber}`);
+      if (task.billerInfo?.subdivision) parts.push(`Circle/Subdivision: ${task.billerInfo.subdivision}`);
+      if (task.billerInfo?.additionalInstructions) parts.push(`Instructions: ${task.billerInfo.additionalInstructions}`);
       if (task.notes) parts.push(`Notes: ${task.notes}`);
 
-      if (task.billerInfo.billType === "GENERAL" || task.billerInfo.billType === "FORM_FILL" || task.billerInfo.billType === "OTHER") {
-        formulatedGoal = `Perform form task: "${task.title}". Fill in form fields with User Details: [${parts.join(", ")}]. Clear and override any demo or sample values with these user values.`;
+      if (
+        !task.billerInfo ||
+        task.billerInfo.billType === "GENERAL" ||
+        task.billerInfo.billType === "FORM_FILL" ||
+        task.billerInfo.billType === "OTHER"
+      ) {
+        formulatedGoal = `Perform form task: "${task.title}". Fill in form fields with User Credentials: [${parts.join(
+          ", "
+        )}]. Clear and override any demo or sample values with these user values.`;
       } else {
         formulatedGoal = `Pay ${task.billerInfo.billType.toLowerCase()} bill for ${
           task.billerInfo.providerName || task.title
@@ -823,6 +1406,7 @@ export function App() {
     setGoal(formulatedGoal);
     handleStartTask(formulatedGoal, targetUrl, task.id);
   };
+
 
   const handleCloneTask = async (id: string) => {
     try {
@@ -906,7 +1490,7 @@ export function App() {
       <div class="ambient-glow" />
 
       {/* Header Section */}
-      <header class="relative z-10 flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
+      <header class="relative z-20 flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2.5 min-w-0">
           <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-glow-sm shrink-0">
             <SparkleIcon size={15} class="text-white" />
@@ -926,20 +1510,124 @@ export function App() {
           </div>
         </div>
 
-        {/* Live Indicator */}
-        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-900/90 border border-white/[0.08] text-[10px] text-zinc-400 shrink-0">
-          <span
-            class={`w-1.5 h-1.5 rounded-full ${
-              taskState === "EXECUTING" || taskState === "PLANNING"
-                ? "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"
-                : taskState === "COMPLETED"
-                ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                : "bg-emerald-500"
-            }`}
-          />
-          <span class="font-mono text-[9px] uppercase tracking-wider text-zinc-300">
-            {taskState || "READY"}
-          </span>
+        {/* Profile Vault Quick Switcher & Live Status */}
+        <div class="flex items-center gap-1.5 shrink-0">
+          {/* Active Profile Pill Switcher */}
+          <div class="relative">
+            {(() => {
+              const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+              const currentProfileStyles = getProfileColorStyles(currentActiveProfile?.color);
+              return (
+                <>
+                  <button
+                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                    class={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold transition active:scale-95 ${
+                      currentProfileStyles.badge
+                    } hover:brightness-110`}
+                    title="Switch Identity Profile Vault"
+                  >
+                    <span class={`w-1.5 h-1.5 rounded-full ${currentProfileStyles.dot}`} />
+                    <span class="truncate max-w-[76px]">
+                      {currentActiveProfile?.label || "Personal"}
+                    </span>
+                    <CaretDownIcon size={10} class="opacity-70 shrink-0" />
+                  </button>
+
+                  {/* Profile Micro-Dropdown Menu */}
+                  {isProfileDropdownOpen && (
+                    <div class="absolute right-0 top-full mt-1.5 w-56 glass-panel rounded-xl shadow-2xl border border-white/[0.1] py-1.5 z-50 animate-scale-in">
+                      <div class="px-2.5 py-1 border-b border-white/[0.06] flex items-center justify-between">
+                        <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
+                          Identity Vault
+                        </span>
+                        <span class="text-[9px] text-zinc-500 font-mono">
+                          {profiles.length} profiles
+                        </span>
+                      </div>
+
+                      <div class="max-h-48 overflow-y-auto py-1 space-y-0.5 px-1">
+                        {profiles.map((prof) => {
+                          const profStyles = getProfileColorStyles(prof.color);
+                          const isSelected = prof.id === activeProfileId;
+                          return (
+                            <button
+                              key={prof.id}
+                              onClick={() => handleSelectActiveProfile(prof.id)}
+                              class={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                                isSelected
+                                  ? "bg-white/[0.08] text-white font-semibold"
+                                  : "text-zinc-300 hover:bg-white/[0.04] hover:text-white"
+                              }`}
+                            >
+                              <div class="flex items-center gap-2 min-w-0">
+                                <div
+                                  class={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 border ${profStyles.badge}`}
+                                >
+                                  {renderProfileIcon(prof.icon, 11)}
+                                </div>
+                                <div class="flex flex-col min-w-0">
+                                  <div class="flex items-center gap-1">
+                                    <span class="text-xs truncate">{prof.label}</span>
+                                    {prof.isDefault && (
+                                      <StarIcon size={9} class="text-amber-400 shrink-0 fill-current" />
+                                    )}
+                                  </div>
+                                  <span class="text-[9px] text-zinc-400 truncate font-mono">
+                                    {[prof.firstName, prof.lastName].filter(Boolean).join(" ") ||
+                                      prof.email ||
+                                      "No credentials"}
+                                  </span>
+                                </div>
+                              </div>
+                              {isSelected && <CheckIcon size={12} class="text-indigo-400 shrink-0 ml-1" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div class="border-t border-white/[0.06] pt-1 px-1 mt-1 space-y-0.5">
+                        <button
+                          onClick={handleOpenCreateProfile}
+                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-semibold text-indigo-300 hover:bg-indigo-500/10 hover:text-indigo-200 flex items-center gap-1.5 transition"
+                        >
+                          <PlusIcon size={12} />
+                          <span>Create New Identity</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            setEditingProfile(null);
+                            setIsCreatingNewProfile(false);
+                            setIsProfileVaultModalOpen(true);
+                          }}
+                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-medium text-zinc-300 hover:bg-white/[0.04] hover:text-white flex items-center gap-1.5 transition"
+                        >
+                          <IdentificationCardIcon size={12} />
+                          <span>Manage Vault & Identities</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Live Indicator */}
+          <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900/90 border border-white/[0.08] text-[10px] text-zinc-400 shrink-0">
+            <span
+              class={`w-1.5 h-1.5 rounded-full ${
+                taskState === "EXECUTING" || taskState === "PLANNING"
+                  ? "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"
+                  : taskState === "COMPLETED"
+                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                  : "bg-emerald-500"
+              }`}
+            />
+            <span class="font-mono text-[9px] uppercase tracking-wider text-zinc-300">
+              {taskState || "READY"}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -985,8 +1673,28 @@ export function App() {
                 <SparkleIcon size={13} class="text-indigo-400" />
                 <span>What should the agent do?</span>
               </label>
-              <span class="text-[10px] text-zinc-500">Autonomous workflow</span>
+              {(() => {
+                const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+                const currentProfileStyles = getProfileColorStyles(currentActiveProfile?.color);
+                return (
+                  <button
+                    onClick={() => {
+                      setEditingProfile(null);
+                      setIsCreatingNewProfile(false);
+                      setIsProfileVaultModalOpen(true);
+                    }}
+                    class={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border transition active:scale-95 ${
+                      currentProfileStyles.badge
+                    }`}
+                    title="Active Identity profile autofill settings"
+                  >
+                    {renderProfileIcon(currentActiveProfile?.icon, 10)}
+                    <span class="truncate max-w-[90px]">{currentActiveProfile?.label || "Personal"}</span>
+                  </button>
+                );
+              })()}
             </div>
+
 
             <textarea
               rows={3}
@@ -1418,10 +2126,47 @@ export function App() {
                 {/* Profile Details Drawer */}
                 {showBillerDetails && (
                   <div class="glass-panel rounded-xl p-3 space-y-2.5 border-indigo-500/30 animate-fade-in">
-                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
-                      <UserIcon size={13} />
-                      <span>User Profile & Autofill Credentials</span>
+                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                      <div class="flex items-center gap-1.5">
+                        <UserIcon size={13} />
+                        <span>User Profile & Autofill Credentials</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingProfile(null);
+                          setIsCreatingNewProfile(false);
+                          setIsProfileVaultModalOpen(true);
+                        }}
+                        class="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
+                      >
+                        <IdentificationCardIcon size={11} />
+                        <span>Manage Vault</span>
+                      </button>
                     </div>
+
+                    {/* Identity Preset Selector */}
+                    {profiles.length > 0 && (
+                      <div class="bg-indigo-950/25 p-2 rounded-lg border border-indigo-500/20">
+                        <label class="text-[10px] text-indigo-300 block mb-1 font-semibold flex items-center gap-1">
+                          <SparkleIcon size={11} />
+                          <span>Autofill from Identity Vault Preset</span>
+                        </label>
+                        <select
+                          value={newTaskProfileId}
+                          onChange={(e) => handleApplyProfileToCreateForm((e.target as HTMLSelectElement).value)}
+                          class="w-full glass-input rounded-lg px-2 h-7 text-xs text-zinc-200 font-medium"
+                        >
+                          <option value="">-- Select Identity Profile --</option>
+                          {profiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.label} {p.isDefault ? "★ (Default)" : ""} - {[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
 
                     <div class="grid grid-cols-2 gap-2">
                       <div>
@@ -1985,10 +2730,47 @@ export function App() {
 
               {/* User Profile & Form Details Group */}
               <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
-                <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
-                  <UserIcon size={13} />
-                  <span>User Profile & Biller Info</span>
+                <div class="text-[11px] font-semibold text-indigo-300 flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                  <div class="flex items-center gap-1.5">
+                    <UserIcon size={13} />
+                    <span>User Profile & Biller Info</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingProfile(null);
+                      setIsCreatingNewProfile(false);
+                      setIsProfileVaultModalOpen(true);
+                    }}
+                    class="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1"
+                  >
+                    <IdentificationCardIcon size={11} />
+                    <span>Vault</span>
+                  </button>
                 </div>
+
+                {/* Identity Preset Selector in Edit Modal */}
+                {profiles.length > 0 && (
+                  <div class="bg-indigo-950/25 p-2 rounded-lg border border-indigo-500/20">
+                    <label class="text-[10px] text-indigo-300 block mb-1 font-semibold flex items-center gap-1">
+                      <SparkleIcon size={11} />
+                      <span>Autofill from Identity Vault Preset</span>
+                    </label>
+                    <select
+                      value={editProfileId}
+                      onChange={(e) => handleApplyProfileToEditForm((e.target as HTMLSelectElement).value)}
+                      class="w-full glass-input rounded-lg px-2 h-7 text-xs text-zinc-200 font-medium"
+                    >
+                      <option value="">-- Choose Profile Preset --</option>
+                      {profiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label} {p.isDefault ? "★ (Default)" : ""} - {[p.firstName, p.lastName].filter(Boolean).join(" ") || p.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
 
                 {/* First Name & Last Name (Separate inputs) */}
                 <div class="grid grid-cols-2 gap-2">
@@ -2228,6 +3010,539 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Multi-Profile Identity Vault Modal */}
+      {isProfileVaultModalOpen && (
+        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto animate-fade-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden border border-indigo-500/30 animate-scale-in">
+            {/* Modal Header */}
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <div class="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                <IdentificationCardIcon size={16} />
+                <span>Multi-Profile Identity Vault</span>
+              </div>
+              <button
+                onClick={() => {
+                  setIsProfileVaultModalOpen(false);
+                  setEditingProfile(null);
+                  setIsCreatingNewProfile(false);
+                }}
+                class="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05] transition"
+              >
+                <XIcon size={14} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div class="p-4 overflow-y-auto space-y-4 text-xs bg-zinc-950/70 flex-1">
+              {editingProfile || isCreatingNewProfile ? (
+                /* Profile Editor Form View */
+                <div class="space-y-3.5 animate-fade-in">
+                  <div class="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                    <button
+                      onClick={() => {
+                        setEditingProfile(null);
+                        setIsCreatingNewProfile(false);
+                      }}
+                      class="text-xs text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1 font-semibold"
+                    >
+                      <span>← Back to Identities</span>
+                    </button>
+                    <span class="text-[11px] font-bold text-zinc-300">
+                      {isCreatingNewProfile ? "Create Identity Profile" : `Edit "${profLabel}"`}
+                    </span>
+                  </div>
+
+                  {/* Profile Label */}
+                  <div>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-semibold uppercase tracking-wider">
+                      Identity Label <span class="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Personal, Work, Family / Home, Freelance"
+                      value={profLabel}
+                      onInput={(e) => setProfLabel((e.target as HTMLInputElement).value)}
+                      class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-100 font-medium"
+                    />
+                  </div>
+
+                  {/* Icon & Color Selector */}
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1.5 font-medium">Icon</label>
+                      <div class="flex flex-wrap gap-1.5">
+                        {(["user", "briefcase", "house", "sparkle", "buildings", "credit-card", "tag"] as ProfileIconType[]).map((ic) => (
+                          <button
+                            key={ic}
+                            type="button"
+                            onClick={() => setProfIcon(ic)}
+                            class={`w-7 h-7 rounded-lg flex items-center justify-center border transition ${
+                              profIcon === ic
+                                ? "bg-indigo-600 text-white border-indigo-400 shadow-glow-sm"
+                                : "bg-zinc-900 text-zinc-400 border-white/[0.08] hover:text-white"
+                            }`}
+                          >
+                            {renderProfileIcon(ic, 13)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1.5 font-medium">Color Theme</label>
+                      <div class="flex flex-wrap gap-1.5">
+                        {(["indigo", "emerald", "amber", "violet", "rose", "blue", "cyan"] as ProfileColor[]).map((col) => {
+                          const colStyles = getProfileColorStyles(col);
+                          return (
+                            <button
+                              key={col}
+                              type="button"
+                              onClick={() => setProfColor(col)}
+                              class={`w-7 h-7 rounded-lg flex items-center justify-center border transition ${
+                                profColor === col
+                                  ? `${colStyles.bgLight} ${colStyles.border} ring-2 ring-white/30`
+                                  : "bg-zinc-900 border-white/[0.08] hover:border-white/20"
+                              }`}
+                            >
+                              <span class={`w-3 h-3 rounded-full ${colStyles.dot}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Credentials */}
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
+                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                      <UserIcon size={13} />
+                      <span>Personal Contact Information</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">First Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. John"
+                          value={profFirstName}
+                          onInput={(e) => setProfFirstName((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Last Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Doe"
+                          value={profLastName}
+                          onInput={(e) => setProfLastName((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="e.g. john.doe@gmail.com"
+                          value={profEmail}
+                          onInput={(e) => setProfEmail((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Phone Number</label>
+                        <input
+                          type="tel"
+                          placeholder="e.g. 9876543210"
+                          value={profPhone}
+                          onInput={(e) => setProfPhone((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Address Details */}
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
+                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                      <HouseIcon size={13} />
+                      <span>Address & Location (Optional)</span>
+                    </div>
+
+                    <div>
+                      <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Street Address</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 124 Park Street, Suite 4B"
+                        value={profStreet}
+                        onInput={(e) => setProfStreet((e.target as HTMLInputElement).value)}
+                        class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                      />
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">City</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Kolkata / Mumbai"
+                          value={profCity}
+                          onInput={(e) => setProfCity((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">State / Region</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. West Bengal"
+                          value={profState}
+                          onInput={(e) => setProfState((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Postal / PIN Code</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 700016"
+                          value={profPostalCode}
+                          onInput={(e) => setProfPostalCode((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Country</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. India"
+                          value={profCountry}
+                          onInput={(e) => setProfCountry((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Business & Tax Details */}
+                  <div class="glass-panel rounded-xl p-3 space-y-2.5 border-white/[0.08]">
+                    <div class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5 pb-1 border-b border-white/[0.06]">
+                      <BriefcaseIcon size={13} />
+                      <span>Business & Tax Info (Optional)</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Company Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Acme Studio LLC"
+                          value={profCompanyName}
+                          onInput={(e) => setProfCompanyName((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">GST / Tax ID</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 19ABCDE1234F1Z5"
+                          value={profTaxId}
+                          onInput={(e) => setProfTaxId((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Department</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Engineering / Finance"
+                          value={profDepartment}
+                          onInput={(e) => setProfDepartment((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                      <div>
+                        <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Designation</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Lead Architect"
+                          value={profDesignation}
+                          onInput={(e) => setProfDesignation((e.target as HTMLInputElement).value)}
+                          class="w-full glass-input rounded-lg px-2.5 h-8 text-xs text-zinc-200"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom Key-Value Attributes */}
+                  <div class="glass-panel rounded-xl p-3 space-y-2 border-white/[0.08]">
+                    <div class="flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                      <span class="text-[11px] font-semibold text-indigo-300 flex items-center gap-1.5">
+                        <TagIcon size={13} />
+                        <span>Custom Form Attributes</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setProfCustomAttrs([...profCustomAttrs, { key: "", value: "" }])}
+                        class="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1"
+                      >
+                        <PlusIcon size={11} />
+                        <span>Add Attribute</span>
+                      </button>
+                    </div>
+
+                    {profCustomAttrs.length === 0 ? (
+                      <p class="text-[10px] text-zinc-500 italic py-1">
+                        No custom attributes (e.g. Passport, PAN Card, Voter ID, Mother's Name).
+                      </p>
+                    ) : (
+                      profCustomAttrs.map((attr, idx) => (
+                        <div key={idx} class="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Attribute Key (e.g. PAN Card)"
+                            value={attr.key}
+                            onInput={(e) => {
+                              const updated = [...profCustomAttrs];
+                              updated[idx].key = (e.target as HTMLInputElement).value;
+                              setProfCustomAttrs(updated);
+                            }}
+                            class="flex-1 glass-input rounded-md px-2 h-7 text-xs text-zinc-200"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Attribute Value"
+                            value={attr.value}
+                            onInput={(e) => {
+                              const updated = [...profCustomAttrs];
+                              updated[idx].value = (e.target as HTMLInputElement).value;
+                              setProfCustomAttrs(updated);
+                            }}
+                            class="flex-1 glass-input rounded-md px-2 h-7 text-xs text-zinc-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = profCustomAttrs.filter((_, i) => i !== idx);
+                              setProfCustomAttrs(updated);
+                            }}
+                            class="text-zinc-500 hover:text-rose-400 p-1"
+                          >
+                            <TrashIcon size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label class="text-[10px] text-zinc-400 block mb-1 font-medium">Notes & Instructions</label>
+                    <textarea
+                      rows={2}
+                      value={profNotes}
+                      onInput={(e) => setProfNotes((e.target as HTMLTextAreaElement).value)}
+                      placeholder="Special instructions for the autonomous agent when this profile is active..."
+                      class="w-full glass-input rounded-lg p-2 text-xs text-zinc-200 resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Editor Footer Actions */}
+                  <div class="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProfile(null);
+                        setIsCreatingNewProfile(false);
+                      }}
+                      class="px-3 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveProfile}
+                      disabled={!profLabel.trim()}
+                      class="shimmer-btn px-4 py-1.5 rounded-lg text-xs text-white font-semibold shadow-glow-sm active:scale-95 transition"
+                    >
+                      Save Identity Profile
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Profile List Overview View */
+                <div class="space-y-3 animate-fade-in">
+                  <div class="flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                    <div>
+                      <h4 class="text-xs font-bold text-zinc-100">Saved Identities</h4>
+                      <p class="text-[10px] text-zinc-400">
+                        Autonomous agent uses credentials from selected identity
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleOpenCreateProfile}
+                      class="shimmer-btn text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 shadow-glow-sm active:scale-95 transition"
+                    >
+                      <PlusIcon size={12} />
+                      <span>New Identity</span>
+                    </button>
+                  </div>
+
+                  <div class="space-y-2.5">
+                    {profiles.map((prof) => {
+                      const profStyles = getProfileColorStyles(prof.color);
+                      const isSelected = prof.id === activeProfileId;
+                      const fullName = [prof.firstName, prof.lastName].filter(Boolean).join(" ");
+                      return (
+                        <div
+                          key={prof.id}
+                          class={`glass-card rounded-xl p-3 border transition ${
+                            isSelected
+                              ? `${profStyles.border} ${profStyles.bgLight} shadow-glow-sm`
+                              : "border-white/[0.07] hover:border-white/[0.15]"
+                          }`}
+                        >
+                          <div class="flex items-start justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <div
+                                class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${profStyles.badge}`}
+                              >
+                                {renderProfileIcon(prof.icon, 14)}
+                              </div>
+                              <div class="flex flex-col min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                  <span class="text-xs font-bold text-zinc-100 truncate">{prof.label}</span>
+                                  {prof.isDefault && (
+                                    <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold inline-flex items-center gap-0.5">
+                                      <StarIcon size={9} class="fill-current" />
+                                      <span>Default</span>
+                                    </span>
+                                  )}
+                                  {isSelected && (
+                                    <span class="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+                                      Active
+                                    </span>
+                                  )}
+                                </div>
+                                <span class="text-[10px] text-zinc-400 font-medium truncate">
+                                  {fullName || "No Name Assigned"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Actions Toolbar */}
+                            <div class="flex items-center gap-1 shrink-0">
+                              {!isSelected && (
+                                <button
+                                  onClick={() => handleSelectActiveProfile(prof.id)}
+                                  class="text-[10px] bg-zinc-800 hover:bg-indigo-600 text-zinc-300 hover:text-white px-2 py-0.5 rounded-md transition font-medium"
+                                >
+                                  Use Now
+                                </button>
+                              )}
+                              {!prof.isDefault && (
+                                <button
+                                  onClick={() => handleSetDefaultProfile(prof.id)}
+                                  class="text-zinc-400 hover:text-amber-400 p-1 rounded hover:bg-white/[0.05] transition"
+                                  title="Set as Default Identity"
+                                >
+                                  <StarIcon size={13} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleOpenEditProfile(prof)}
+                                class="text-zinc-400 hover:text-indigo-300 p-1 rounded hover:bg-white/[0.05] transition"
+                                title="Edit Identity Profile"
+                              >
+                                <PencilSimpleIcon size={13} />
+                              </button>
+                              {profiles.length > 1 && (
+                                <button
+                                  onClick={() => handleDeleteProfile(prof.id)}
+                                  class="text-zinc-500 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition"
+                                  title="Delete Identity Profile"
+                                >
+                                  <TrashIcon size={13} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Profile Details Snippet */}
+                          <div class="bg-zinc-950/60 rounded-lg p-2 text-[10px] text-zinc-300 space-y-1 border border-white/[0.04]">
+                            <div class="flex flex-wrap gap-x-3 gap-y-0.5">
+                              {prof.email && (
+                                <span class="inline-flex items-center gap-1 text-zinc-300">
+                                  <EnvelopeSimpleIcon size={10} class="text-indigo-400" />
+                                  <span class="truncate max-w-[150px]">{prof.email}</span>
+                                </span>
+                              )}
+                              {prof.phone && (
+                                <span class="inline-flex items-center gap-1 text-zinc-300">
+                                  <PhoneIcon size={10} class="text-indigo-400" />
+                                  <span>{prof.phone}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {(prof.address?.city || prof.address?.state || prof.address?.postalCode) && (
+                              <div class="flex items-center gap-1 text-zinc-400 truncate">
+                                <HouseIcon size={10} class="text-indigo-400 shrink-0" />
+                                <span class="truncate">
+                                  {[prof.address.street, prof.address.city, prof.address.state, prof.address.postalCode]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </span>
+                              </div>
+                            )}
+
+                            {(prof.business?.companyName || prof.business?.taxIdOrGst) && (
+                              <div class="flex items-center gap-2 text-zinc-400 truncate pt-0.5 border-t border-white/[0.04]">
+                                <BriefcaseIcon size={10} class="text-indigo-400 shrink-0" />
+                                <span class="truncate">
+                                  {prof.business.companyName}
+                                  {prof.business.taxIdOrGst ? ` (GST: ${prof.business.taxIdOrGst})` : ""}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div class="flex items-center justify-end px-4 py-2.5 border-t border-white/[0.08] bg-zinc-950/90 shrink-0">
+              <button
+                onClick={() => {
+                  setIsProfileVaultModalOpen(false);
+                  setEditingProfile(null);
+                  setIsCreatingNewProfile(false);
+                }}
+                class="px-4 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition"
+              >
+                Close Vault
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

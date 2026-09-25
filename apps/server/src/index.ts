@@ -5,10 +5,13 @@ import { loadConfig } from "./config.js";
 import { PlannerService } from "./planner.js";
 import { TaskOrchestrator } from "./orchestrator.js";
 import { PendingTaskManager } from "./pending-task-manager.js";
+import { ProfileVaultManager } from "./profile-vault-manager.js";
 import {
   ExtensionMessageSchema,
   TaskCreateRequestSchema,
   CreatePendingTaskSchema,
+  CreateUserProfileSchema,
+  UpdateUserProfileSchema,
   type ServerMessage
 } from "@difm/shared";
 
@@ -26,9 +29,71 @@ export async function createServer() {
   );
   const orchestrator = new TaskOrchestrator(planner);
   const pendingTaskManager = new PendingTaskManager();
+  const profileVaultManager = new ProfileVaultManager();
 
   app.get("/health", async () => {
     return { status: "ok", timestamp: Date.now() };
+  });
+
+  // Profile Vault Endpoints
+  app.get("/profiles", async () => {
+    return {
+      profiles: profileVaultManager.getAllProfiles(),
+      defaultProfile: profileVaultManager.getDefaultProfile()
+    };
+  });
+
+  app.post("/profiles", async (req, reply) => {
+    const parsed = CreateUserProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid profile data", details: parsed.error.issues });
+    }
+    const profile = profileVaultManager.createProfile(parsed.data);
+    return { profile };
+  });
+
+  app.get("/profiles/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const profile = profileVaultManager.getProfileById(id);
+    if (!profile) return reply.status(404).send({ error: "Profile not found" });
+    return { profile };
+  });
+
+  app.patch("/profiles/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = UpdateUserProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid update data", details: parsed.error.issues });
+    }
+    try {
+      const profile = profileVaultManager.updateProfile(id, parsed.data);
+      return { profile };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      return reply.status(400).send({ error: msg });
+    }
+  });
+
+  app.delete("/profiles/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const success = profileVaultManager.deleteProfile(id);
+      return { success };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Delete failed";
+      return reply.status(400).send({ error: msg });
+    }
+  });
+
+  app.post("/profiles/:id/set-default", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const profile = profileVaultManager.setDefaultProfile(id);
+      return { profile };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Set default failed";
+      return reply.status(404).send({ error: msg });
+    }
   });
 
   app.get("/pending-tasks", async (req) => {

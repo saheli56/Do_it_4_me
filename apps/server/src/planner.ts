@@ -23,6 +23,12 @@ CORE CAPABILITIES & EXECUTION RULES:
     - If User Last Name is provided (e.g. "mimi" or "doe"), type it into Last Name input.
   * Phone / Mobile -> input matching "phone", "mobile", "contact", "tel"
   * Email -> input matching "email", "mail", "e-mail"
+  * Company / Business -> input matching "company", "business", "organization", "firm"
+  * GSTIN / Tax ID -> input matching "gst", "gstin", "tax", "vat", "pan"
+  * Street / Address Line -> input or textarea matching "address", "street", "addr", "line 1"
+  * City / Town -> input matching "city", "town", "district"
+  * State / Province -> input or select matching "state", "province", "region"
+  * Postal / PIN / ZIP Code -> input matching "zip", "postal", "pin", "pincode"
   * Consumer / Account / Connection / ID No -> input matching "consumer", "account", "ca no", "k no", "id", "number"
   * Comments / Messages / Notes -> textarea or textbox matching "message", "notes", "description", "details"
 - If form inputs already contain sample/demo values (e.g. "Jane", "Smith", "stopallbots@gmail.com") or are marked [disabled] on demo/test pages, ALWAYS OVERRIDE/REPLACE them with the user's provided details (e.g. First Name "mimi", Last Name "mimi", Email "demo56@gmail.com").

@@ -62,6 +62,7 @@ export const PendingTaskStatusSchema = z.enum([
 export type PendingTaskStatus = z.infer<typeof PendingTaskStatusSchema>;
 
 export const BillerInfoSchema = z.object({
+  profileId: z.string().optional(),
   providerName: z.string().optional(),
   billType: TaskCategorySchema.default("GENERAL"),
   consumerNumber: z.string().optional(),
