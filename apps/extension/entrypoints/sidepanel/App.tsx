@@ -66,7 +66,8 @@ import {
   UploadSimpleIcon,
   ScanIcon,
   FileArrowUpIcon,
-  FloppyDiskIcon
+  FloppyDiskIcon,
+  FileTextIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -503,8 +504,40 @@ function getAccentThemeStyles(accent: AppAccentColor) {
   }
 }
 
+export interface RawNoteItem {
+  id: string;
+  rawText: string;
+  createdAt: number;
+  status: "DRAFT" | "NEEDS_CLARIFICATION" | "SCHEDULED";
+  linkedTaskId?: string;
+  parsedDraft?: {
+    formattedGoal: string;
+    title: string;
+    category: TaskCategory;
+    billingCycle: BillingCycle;
+    dueDate?: string;
+    dueAmount?: string;
+    consumerNumber?: string;
+    providerName?: string;
+    targetUrl?: string;
+    schedule?: {
+      enabled: boolean;
+      frequency: ScheduleFrequency;
+      time: string;
+      dayOfMonth?: number;
+      dayOfWeek?: number;
+      intervalDays?: number;
+      autoExecute: boolean;
+    };
+    missingFields: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate">;
+    clarificationPrompt?: string;
+    requiresHumanApproval: boolean;
+    safetySummary: string;
+  };
+}
+
 export function App() {
-  const [activeTab, setActiveTab] = useState<"EXECUTE" | "PENDING">("EXECUTE");
+  const [activeTab, setActiveTab] = useState<"EXECUTE" | "NOTES" | "PENDING">("EXECUTE");
   const [goal, setGoal] = useState("");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskState, setTaskState] = useState<TaskState | null>(null);
@@ -555,6 +588,53 @@ export function App() {
   const [isProfileVaultModalOpen, setIsProfileVaultModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<UserProfile | null>(null);
   const [isCreatingNewProfile, setIsCreatingNewProfile] = useState(false);
+
+  // Smart Notes & Raw Reminders State
+  const [noteInput, setNoteInput] = useState("");
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [savedNotes, setSavedNotes] = useState<RawNoteItem[]>(() => {
+    try {
+      const cached = localStorage.getItem("difm_saved_rough_notes");
+      return cached
+        ? JSON.parse(cached)
+        : [
+            {
+              id: "note-sample-1",
+              rawText: "CESC electric bill around 1450 due before oct 15, pay on 5th every month",
+              createdAt: Date.now() - 3600000,
+              status: "NEEDS_CLARIFICATION",
+              parsedDraft: {
+                formattedGoal:
+                  "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
+                title: "Pay CESC Electricity Bill",
+                category: "ELECTRICITY",
+                billingCycle: "MONTHLY",
+                dueAmount: "₹1,450",
+                dueDate: "2026-10-15",
+                providerName: "CESC Electricity",
+                targetUrl: "https://www.cesc.co.in",
+                schedule: {
+                  enabled: true,
+                  frequency: "MONTHLY",
+                  time: "09:30",
+                  dayOfMonth: 5,
+                  autoExecute: false
+                },
+                missingFields: ["consumerNumber"],
+                clarificationPrompt:
+                  "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
+                requiresHumanApproval: true,
+                safetySummary:
+                  "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
+              }
+            }
+          ];
+    } catch {
+      return [];
+    }
+  });
+  const [isNoteAnalyzing, setIsNoteAnalyzing] = useState(false);
+  const [activeNoteDraft, setActiveNoteDraft] = useState<RawNoteItem["parsedDraft"] | null>(null);
 
   // AI Smart Task Architect & Auto-Scheduler State
   const [isSmartSchedulerOpen, setIsSmartSchedulerOpen] = useState(false);
@@ -1967,6 +2047,219 @@ export function App() {
     }
   };
 
+  // Sync saved rough notes to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("difm_saved_rough_notes", JSON.stringify(savedNotes));
+    } catch (e) {
+      console.error("Failed to persist saved notes:", e);
+    }
+  }, [savedNotes]);
+
+  // Smart Notes Action Handlers
+  const handleAnalyzeRawNote = async (textToParse?: string) => {
+    const raw = (textToParse ?? noteInput).trim();
+    if (!raw) return;
+    setIsNoteAnalyzing(true);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const res = await fetch("http://127.0.0.1:3001/parse-rough-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawGoal: raw,
+          currentUrl: tab?.url,
+          userProfile: currentActiveProfile
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.result) {
+          const draft = data.result;
+          setActiveNoteDraft(draft);
+
+          const existingIndex = activeNoteId ? savedNotes.findIndex((n) => n.id === activeNoteId) : -1;
+          const status = draft.missingFields && draft.missingFields.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT";
+
+          if (existingIndex >= 0) {
+            const updated = [...savedNotes];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              rawText: raw,
+              status,
+              parsedDraft: draft
+            };
+            setSavedNotes(updated);
+          } else {
+            const newId = "note-" + Date.now();
+            setActiveNoteId(newId);
+            setSavedNotes([
+              {
+                id: newId,
+                rawText: raw,
+                createdAt: Date.now(),
+                status,
+                parsedDraft: draft
+              },
+              ...savedNotes
+            ]);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to analyze raw note:", e);
+    } finally {
+      setIsNoteAnalyzing(false);
+    }
+  };
+
+  const handleUpdateNoteDraftField = (field: string, value: any) => {
+    if (!activeNoteDraft) return;
+    const updated = { ...activeNoteDraft, [field]: value };
+    let missing = [...(updated.missingFields || [])];
+    if (field === "consumerNumber" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "consumerNumber");
+    }
+    if (field === "providerName" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "providerName");
+    }
+    if (field === "dueAmount" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "dueAmount");
+    }
+    if (field === "dueDate" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "dueDate");
+    }
+    if (field === "targetUrl" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "targetUrl");
+    }
+    updated.missingFields = missing;
+    setActiveNoteDraft(updated);
+
+    if (activeNoteId) {
+      setSavedNotes((prev) =>
+        prev.map((n) =>
+          n.id === activeNoteId
+            ? {
+                ...n,
+                status: missing.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT",
+                parsedDraft: updated
+              }
+            : n
+        )
+      );
+    }
+  };
+
+  const handleAutoDetectTabForNote = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab?.url && activeNoteDraft) {
+        let detectedProvider = activeNoteDraft.providerName;
+        if (/cesc/i.test(tab.url)) detectedProvider = "CESC Electricity";
+        else if (/airtel/i.test(tab.url)) detectedProvider = "Airtel";
+        else if (/bescom/i.test(tab.url)) detectedProvider = "BESCOM";
+        else if (/wbsedcl/i.test(tab.url)) detectedProvider = "WBSEDCL";
+
+        handleUpdateNoteDraftField("targetUrl", tab.url);
+        if (detectedProvider && !activeNoteDraft.providerName) {
+          handleUpdateNoteDraftField("providerName", detectedProvider);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to detect tab for note:", e);
+    }
+  };
+
+  const handleScheduleNoteToTasks = async (andRun = false) => {
+    if (!activeNoteDraft) return;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const customerFullName = [currentActiveProfile?.firstName, currentActiveProfile?.lastName].filter(Boolean).join(" ");
+
+      const billerInfo = {
+        providerName: activeNoteDraft.providerName || undefined,
+        billType: activeNoteDraft.category,
+        billingCycle: activeNoteDraft.billingCycle,
+        consumerNumber: activeNoteDraft.consumerNumber || undefined,
+        amount: activeNoteDraft.dueAmount || undefined,
+        portalUrl: activeNoteDraft.targetUrl || undefined,
+        firstName: currentActiveProfile?.firstName || undefined,
+        lastName: currentActiveProfile?.lastName || undefined,
+        customerName: customerFullName || undefined,
+        phoneNumber: currentActiveProfile?.phone || undefined,
+        emailAddress: currentActiveProfile?.email || undefined,
+        additionalInstructions: activeNoteDraft.formattedGoal
+      };
+
+      const res = await fetch("http://127.0.0.1:3001/pending-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: activeNoteDraft.title,
+          priority: "HIGH",
+          category: activeNoteDraft.category,
+          dueDate: activeNoteDraft.dueDate || undefined,
+          notes: activeNoteDraft.formattedGoal,
+          targetUrl: activeNoteDraft.targetUrl || tab?.url || undefined,
+          schedule: activeNoteDraft.schedule,
+          billerInfo
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const createdTaskId = data.task?.id;
+
+        if (activeNoteId) {
+          setSavedNotes((prev) =>
+            prev.map((n) =>
+              n.id === activeNoteId
+                ? {
+                    ...n,
+                    status: "SCHEDULED",
+                    linkedTaskId: createdTaskId,
+                    parsedDraft: activeNoteDraft
+                  }
+                : n
+            )
+          );
+        }
+
+        setSuccessMessage({
+          title: "Note Converted & Scheduled Successfully",
+          summary: `"${activeNoteDraft.title}" is now added neatly to Tasks & Schedules. Sensitive actions will pause for approval.`
+        });
+        fetchPendingTasks();
+
+        if (andRun) {
+          setActiveTab("EXECUTE");
+          setGoal(activeNoteDraft.formattedGoal);
+          handleStartTask(activeNoteDraft.formattedGoal, activeNoteDraft.targetUrl || undefined);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to schedule from note:", e);
+    }
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setSavedNotes((prev) => prev.filter((n) => n.id !== id));
+    if (activeNoteId === id) {
+      setActiveNoteId(null);
+      setActiveNoteDraft(null);
+      setNoteInput("");
+    }
+  };
+
+  const handleSelectNote = (note: RawNoteItem) => {
+    setActiveNoteId(note.id);
+    setNoteInput(note.rawText);
+    setActiveNoteDraft(note.parsedDraft || null);
+  };
+
   const handleExecutePendingTask = async (task: PendingTaskItem) => {
     let formulatedGoal = task.title;
     const targetUrl = task.billerInfo?.portalUrl || task.targetUrl;
@@ -2524,6 +2817,23 @@ export function App() {
                     </div>
                   </button>
 
+                  {/* Smart Notes & Raw Reminders */}
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setActiveTab("NOTES");
+                    }}
+                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
+                  >
+                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                      <FileTextIcon size={12} />
+                    </div>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-[11px] font-semibold">Smart Notes & Raw Reminders</span>
+                      <span class="text-[9px] text-zinc-500">{savedNotes.length} Notes • AI Auto-Scheduler</span>
+                    </div>
+                  </button>
+
                   {/* Tasks & Schedules Manager */}
                   <button
                     onClick={() => {
@@ -2547,30 +2857,45 @@ export function App() {
         </div>
       </header>
 
-      {/* Modern Segmented Tab Navigation */}
-      <nav class="relative z-10 grid grid-cols-2 gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/[0.08] mb-3.5 backdrop-blur-md">
+      {/* Modern Segmented Tab Navigation (3 Tabs) */}
+      <nav class="relative z-10 grid grid-cols-3 gap-1 bg-zinc-900/90 p-1 rounded-xl border border-white/[0.08] mb-3.5 backdrop-blur-md">
         <button
           onClick={() => setActiveTab("EXECUTE")}
-          class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
+          class={`relative py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "EXECUTE"
               ? currentAccentStyles.tabActive
               : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
           <LightningIcon size={14} class={activeTab === "EXECUTE" ? currentAccentStyles.iconText : "text-zinc-400"} />
-          <span>Execute Action</span>
+          <span>Execute</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("NOTES")}
+          class={`relative py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
+            activeTab === "NOTES"
+              ? currentAccentStyles.tabActive
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
+          }`}
+        >
+          <FileTextIcon size={14} class={activeTab === "NOTES" ? currentAccentStyles.iconText : "text-zinc-400"} />
+          <span>Notes</span>
+          {savedNotes.some((n) => n.status === "NEEDS_CLARIFICATION") && (
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
+          )}
         </button>
 
         <button
           onClick={() => setActiveTab("PENDING")}
-          class={`relative py-1.5 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
+          class={`relative py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all duration-200 ${
             activeTab === "PENDING"
               ? currentAccentStyles.tabActive
               : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] border border-transparent"
           }`}
         >
           <ListChecksIcon size={14} class={activeTab === "PENDING" ? currentAccentStyles.iconText : "text-zinc-400"} />
-          <span>Tasks & Schedules</span>
+          <span>Schedules</span>
           {activePendingCount > 0 && (
             <span class={`ml-0.5 px-1.5 py-0.2 rounded-full border text-[9px] font-mono ${currentAccentStyles.badge}`}>
               {activePendingCount}
@@ -2896,6 +3221,493 @@ export function App() {
                         {String(index + 1).padStart(2, "0")}
                       </span>
                       <span class="break-all whitespace-pre-wrap flex-1">{log}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMART NOTES & RAW REMINDERS TAB VIEW */}
+      {activeTab === "NOTES" && (
+        <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
+          {/* Note Input & AI Auto-Structuring Card */}
+          <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div
+                  class="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-sm"
+                  style={{
+                    background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                  }}
+                >
+                  <FileTextIcon size={13} />
+                </div>
+                <div>
+                  <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                    Smart Notes & Raw Tasks
+                  </h3>
+                  <p class="text-[10px] text-zinc-400">
+                    Jot down raw thoughts or messy bills — AI parses, clarifies, and schedules
+                  </p>
+                </div>
+              </div>
+
+              {activeNoteId && (
+                <button
+                  onClick={() => {
+                    setActiveNoteId(null);
+                    setActiveNoteDraft(null);
+                    setNoteInput("");
+                  }}
+                  class="text-[10px] px-2 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition flex items-center gap-1"
+                  title="Start a fresh note"
+                >
+                  <PlusIcon size={11} />
+                  <span>New Note</span>
+                </button>
+              )}
+            </div>
+
+            {/* Quick Template Pills */}
+            <div class="space-y-1.5">
+              <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                Quick Raw Examples:
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                {[
+                  {
+                    label: "⚡ CESC Electricity (₹1,450 by 15th)",
+                    text: "pay my cesc electric bill of 1450 before oct 15 every month on 5th"
+                  },
+                  {
+                    label: "📱 Airtel Recharge (₹479 on 1st)",
+                    text: "recharge my airtel mobile with 479 pack on 1st of every month"
+                  },
+                  {
+                    label: "💳 HDFC Credit Card (₹8,500 by 20th)",
+                    text: "pay hdfc credit card bill 8500 due on 20th every month"
+                  },
+                  {
+                    label: "🌐 Broadband (₹999 on 10th)",
+                    text: "pay wifi broadband bill of 999 before 10th monthly"
+                  }
+                ].map((sample, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setNoteInput(sample.text);
+                      handleAnalyzeRawNote(sample.text);
+                    }}
+                    class="text-[10px] px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.06] hover:border-white/[0.15] text-zinc-300 hover:text-white transition active:scale-95"
+                  >
+                    {sample.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Raw Text Input Area */}
+            <div class="relative">
+              <textarea
+                rows={3}
+                value={noteInput}
+                onInput={(e) => setNoteInput((e.target as HTMLTextAreaElement).value)}
+                placeholder="Type anything raw... e.g. 'I have a 1450 electricity bill due on cesc.co.in by 15th oct, pay every month on 5th'"
+                class="w-full px-3 py-2 rounded-xl bg-zinc-900/80 border border-white/[0.08] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white/25 resize-none transition"
+              />
+            </div>
+
+            {/* Note Action Buttons */}
+            <div class="flex items-center justify-between gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={handleAutoDetectTabForNote}
+                class="text-[10px] px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center gap-1.5"
+                title="Attach current browser tab URL to note"
+              >
+                <LinkSimpleIcon size={12} class="text-zinc-400" />
+                <span>Attach Active Web Tab</span>
+              </button>
+
+              <div class="flex items-center gap-2">
+                {noteInput.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNoteInput("");
+                      setActiveNoteDraft(null);
+                      setActiveNoteId(null);
+                    }}
+                    class="text-[10px] px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition"
+                  >
+                    Clear
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!noteInput.trim() || isNoteAnalyzing}
+                  onClick={() => handleAnalyzeRawNote()}
+                  class={`px-3.5 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
+                    !noteInput.trim() || isNoteAnalyzing ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                  style={{
+                    background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                  }}
+                >
+                  <SparkleIcon size={13} class={isNoteAnalyzing ? "animate-spin" : ""} />
+                  <span>{isNoteAnalyzing ? "Analyzing Note..." : "Understand & Structure"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Real-Time AI Understanding & Clarification Card */}
+          {activeNoteDraft && (
+            <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass border border-white/[0.12] animate-slide-down">
+              {/* Status Header */}
+              <div class="flex items-center justify-between border-b border-white/[0.06] pb-2">
+                <div class="flex items-center gap-2">
+                  <div
+                    class={`w-2 h-2 rounded-full ${
+                      activeNoteDraft.missingFields && activeNoteDraft.missingFields.length > 0
+                        ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)] animate-pulse"
+                        : "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                    }`}
+                  />
+                  <span class="text-xs font-bold text-zinc-100">
+                    {activeNoteDraft.missingFields && activeNoteDraft.missingFields.length > 0
+                      ? "Real-Time Clarification Needed"
+                      : "Ready to Schedule"}
+                  </span>
+                </div>
+
+                <span
+                  class={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${
+                    activeNoteDraft.missingFields && activeNoteDraft.missingFields.length > 0
+                      ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                      : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  }`}
+                >
+                  {activeNoteDraft.missingFields && activeNoteDraft.missingFields.length > 0
+                    ? `${activeNoteDraft.missingFields.length} Missing Field${
+                        activeNoteDraft.missingFields.length > 1 ? "s" : ""
+                      }`
+                    : "Complete"}
+                </span>
+              </div>
+
+              {/* Real-Time Interactive Clarification Form */}
+              {activeNoteDraft.missingFields && activeNoteDraft.missingFields.length > 0 ? (
+                <div class="p-3 rounded-xl border border-purple-500/30 bg-purple-950/20 text-purple-200 space-y-2.5">
+                  <div class="flex items-start gap-2">
+                    <InfoIcon size={16} class="text-purple-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 class="text-[11px] font-bold text-purple-300">Clarification Needed in Real-Time</h4>
+                      <p class="text-[10px] text-purple-200/90 leading-relaxed">
+                        {activeNoteDraft.clarificationPrompt ||
+                          "I understood your task, but need a few missing details to complete the automated schedule:"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {activeNoteDraft.missingFields.includes("consumerNumber") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Consumer / Account # <span class="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={activeNoteDraft.consumerNumber || ""}
+                          placeholder="e.g. 05001234567"
+                          onInput={(e) =>
+                            handleUpdateNoteDraftField(
+                              "consumerNumber",
+                              (e.target as HTMLInputElement).value
+                            )
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400 transition"
+                        />
+                      </div>
+                    )}
+
+                    {activeNoteDraft.missingFields.includes("providerName") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Provider / Biller <span class="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={activeNoteDraft.providerName || ""}
+                          placeholder="e.g. CESC, WBSEDCL"
+                          onInput={(e) =>
+                            handleUpdateNoteDraftField(
+                              "providerName",
+                              (e.target as HTMLInputElement).value
+                            )
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400 transition"
+                        />
+                      </div>
+                    )}
+
+                    {activeNoteDraft.missingFields.includes("dueAmount") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Due Amount
+                        </label>
+                        <input
+                          type="text"
+                          value={activeNoteDraft.dueAmount || ""}
+                          placeholder="e.g. ₹1,450"
+                          onInput={(e) =>
+                            handleUpdateNoteDraftField(
+                              "dueAmount",
+                              (e.target as HTMLInputElement).value
+                            )
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400 transition"
+                        />
+                      </div>
+                    )}
+
+                    {activeNoteDraft.missingFields.includes("dueDate") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Due Date
+                        </label>
+                        <input
+                          type="date"
+                          value={activeNoteDraft.dueDate || ""}
+                          onInput={(e) =>
+                            handleUpdateNoteDraftField(
+                              "dueDate",
+                              (e.target as HTMLInputElement).value
+                            )
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400 transition"
+                        />
+                      </div>
+                    )}
+
+                    {activeNoteDraft.missingFields.includes("targetUrl") && (
+                      <div class="sm:col-span-2">
+                        <div class="flex items-center justify-between mb-1">
+                          <label class="text-[10px] font-semibold text-purple-200">
+                            Target Portal URL
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleAutoDetectTabForNote}
+                            class="text-[9px] text-purple-300 hover:text-white underline transition"
+                          >
+                            Grab from active tab
+                          </button>
+                        </div>
+                        <input
+                          type="url"
+                          value={activeNoteDraft.targetUrl || ""}
+                          placeholder="https://www.cesc.co.in"
+                          onInput={(e) =>
+                            handleUpdateNoteDraftField(
+                              "targetUrl",
+                              (e.target as HTMLInputElement).value
+                            )
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400 transition"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Structured Task Preview Fields */}
+              <div class="space-y-2 pt-1">
+                <div>
+                  <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Structured Task Title
+                  </label>
+                  <input
+                    type="text"
+                    value={activeNoteDraft.title}
+                    onInput={(e) =>
+                      handleUpdateNoteDraftField("title", (e.target as HTMLInputElement).value)
+                    }
+                    class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900/80 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/20"
+                  />
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-[11px]">
+                  <div class="p-2 rounded-lg bg-zinc-900/60 border border-white/[0.06]">
+                    <span class="text-[10px] text-zinc-400 block mb-0.5">Category & Cycle:</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-semibold text-zinc-200">{activeNoteDraft.category}</span>
+                      <span class="text-zinc-500">•</span>
+                      <span class="text-zinc-400 font-mono text-[10px]">
+                        {activeNoteDraft.billingCycle}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="p-2 rounded-lg bg-zinc-900/60 border border-white/[0.06]">
+                    <span class="text-[10px] text-zinc-400 block mb-0.5">Schedule Trigger:</span>
+                    <div class="flex items-center gap-1 text-zinc-200 font-medium">
+                      <ClockIcon size={12} class="text-zinc-400" />
+                      <span>
+                        {activeNoteDraft.schedule?.frequency || "MONTHLY"} •{" "}
+                        {activeNoteDraft.schedule?.time || "09:30"}
+                        {activeNoteDraft.schedule?.dayOfMonth
+                          ? ` (Day ${activeNoteDraft.schedule.dayOfMonth})`
+                          : ""}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formatted Goal */}
+                <div>
+                  <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Structured Execution Goal
+                  </label>
+                  <p class="text-[11px] text-zinc-300 bg-zinc-900/60 p-2.5 rounded-lg border border-white/[0.06] leading-relaxed">
+                    {activeNoteDraft.formattedGoal}
+                  </p>
+                </div>
+
+                {/* Safety Shield Guard Banner */}
+                {activeNoteDraft.requiresHumanApproval && (
+                  <div class="p-2.5 rounded-lg border border-amber-500/30 bg-amber-950/20 text-amber-200 flex items-start gap-2">
+                    <ShieldCheckIcon size={16} class="text-amber-400 shrink-0 mt-0.5" />
+                    <p class="text-[10px] text-amber-200/90 leading-relaxed">
+                      {activeNoteDraft.safetySummary ||
+                        "Sensitive financial transactions will pause and request your approval before charging."}
+                    </p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.06]">
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleNoteToTasks(false)}
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800/90 hover:bg-zinc-700 border border-white/[0.12] text-zinc-200 hover:text-white transition shadow-sm active:scale-95 flex items-center gap-1.5"
+                  >
+                    <FloppyDiskIcon size={13} />
+                    <span>Add to Tasks & Schedules</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleNoteToTasks(true)}
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md active:scale-95 flex items-center gap-1.5"
+                    style={{
+                      background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                    }}
+                  >
+                    <PlayIcon size={13} />
+                    <span>Save & Run Now</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Saved Notes History & Notebook */}
+          <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass flex-1 min-h-[140px] flex flex-col">
+            <div class="flex items-center justify-between border-b border-white/[0.06] pb-2">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-200">
+                <FileTextIcon size={13} class="text-zinc-400" />
+                <span>Notes & Raw Memos History</span>
+              </div>
+              <span class="text-[10px] text-zinc-500 font-mono">
+                {savedNotes.length} Note{savedNotes.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            <div class="space-y-2 overflow-y-auto custom-scrollbar flex-1 max-h-[300px] pr-1">
+              {savedNotes.length === 0 ? (
+                <div class="py-8 text-center text-zinc-500 space-y-1">
+                  <FileTextIcon size={24} class="mx-auto opacity-40 mb-1" />
+                  <p class="text-xs">No notes jotted down yet.</p>
+                  <p class="text-[10px]">Type any raw task above to parse and schedule automatically.</p>
+                </div>
+              ) : (
+                savedNotes.map((note) => {
+                  const isSelected = activeNoteId === note.id;
+                  return (
+                    <div
+                      key={note.id}
+                      onClick={() => handleSelectNote(note)}
+                      class={`p-3 rounded-xl border transition cursor-pointer flex flex-col space-y-2 ${
+                        isSelected
+                          ? "bg-white/[0.08] border-white/[0.25] shadow-glow-sm"
+                          : "bg-zinc-900/60 border-white/[0.06] hover:bg-zinc-900/90 hover:border-white/[0.15]"
+                      }`}
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <p class="text-xs text-zinc-200 line-clamp-2 leading-relaxed font-medium">
+                          "{note.rawText}"
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteNote(note.id);
+                          }}
+                          class="text-zinc-500 hover:text-rose-400 p-1 rounded hover:bg-white/[0.05] transition shrink-0"
+                          title="Delete note"
+                        >
+                          <TrashIcon size={12} />
+                        </button>
+                      </div>
+
+                      <div class="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px]">
+                        <span class="text-zinc-500 font-mono">
+                          {new Date(note.createdAt).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </span>
+
+                        <div class="flex items-center gap-1.5">
+                          {note.status === "SCHEDULED" ? (
+                            <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                              <CheckCircleIcon size={10} />
+                              <span>Scheduled</span>
+                            </span>
+                          ) : note.status === "NEEDS_CLARIFICATION" ? (
+                            <span class="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
+                              <InfoIcon size={10} />
+                              <span>Clarify Details</span>
+                            </span>
+                          ) : (
+                            <span class="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-white/[0.06]">
+                              Draft
+                            </span>
+                          )}
+
+                          {note.status === "SCHEDULED" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveTab("PENDING");
+                              }}
+                              class="text-[9px] text-zinc-400 hover:text-white underline transition ml-1"
+                            >
+                              View in Schedules
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })
