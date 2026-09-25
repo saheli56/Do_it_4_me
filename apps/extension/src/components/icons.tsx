@@ -246,54 +246,6 @@ export function FloppyDiskIcon({ size = 16, class: className = "", ...props }: I
   );
 }
 
-export function BellSimpleIcon({ size = 16, class: className = "", ...props }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      class={`inline-block shrink-0 align-middle ${className}`}
-      {...props}
-    >
-      <path d="M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,0,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216ZM48,184c7.7-13.24,16-43.92,16-80a64,64,0,0,1,128,0c0,36.05,8.28,66.73,16,80Z" />
-    </svg>
-  );
-}
-
-export function PaperPlaneTiltIcon({ size = 16, class: className = "", ...props }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      class={`inline-block shrink-0 align-middle ${className}`}
-      {...props}
-    >
-      <path d="M227.32,28.68a16,16,0,0,0-15.66-4.08l-184,56A16,16,0,0,0,24,96.34a15.77,15.77,0,0,0,11.5,15.17l80.47,24.14,24.14,80.47A15.77,15.77,0,0,0,155.66,228a16,16,0,0,0,15.86-12.32l56-184A16,16,0,0,0,227.32,28.68ZM156.45,212l-22.8-76L192,77.31,77.31,136.35,1.35,113.55,185.35,44Z" />
-    </svg>
-  );
-}
-
-export function WhatsappLogoIcon({ size = 16, class: className = "", ...props }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      fill="currentColor"
-      viewBox="0 0 256 256"
-      class={`inline-block shrink-0 align-middle ${className}`}
-      {...props}
-    >
-      <path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,218.6A16,16,0,0,0,40.17,238l42-11.45A104,104,0,1,0,128,24Zm0,192a87.61,87.61,0,0,1-44.42-12.11,8,8,0,0,0-6.19-.94l-42.66,11.63,11.75-43a8,8,0,0,0-.94-6.23A88,88,0,1,1,128,216ZM168,144c-2.31,4.61-12.15,9.23-16.73,9.75-3.87.43-8.83.6-28.79-11.37a71.86,71.86,0,0,1-24.84-24.84C95.27,97.58,95.44,92.62,95.87,88.75c.52-4.58,5.14-14.42,9.75-16.73a8,8,0,0,1,10.6,3.69l8.65,19.46a8,8,0,0,1-.83,8.42l-5.69,7.11a48.24,48.24,0,0,0,16.57,16.57l7.11-5.69a8,8,0,0,1,8.42-.83l19.46,8.65A8,8,0,0,1,168,144Z" />
-    </svg>
-  );
-}
-
 export function BuildingsIcon({ size = 16, class: className = "", ...props }: IconProps) {
   return (
     <svg

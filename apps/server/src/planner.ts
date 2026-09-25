@@ -492,4 +492,217 @@ Respond with ONLY a valid JSON object matching this structure:
       };
     }
   }
+
+  async parseRoughTask(params: {
+    rawGoal: string;
+    currentUrl?: string;
+    userProfile?: any;
+  }): Promise<{
+    formattedGoal: string;
+    title: string;
+    category: import("@difm/shared").TaskCategory;
+    billingCycle: import("@difm/shared").BillingCycle;
+    dueDate?: string;
+    dueAmount?: string;
+    consumerNumber?: string;
+    providerName?: string;
+    targetUrl?: string;
+    schedule?: {
+      enabled: boolean;
+      frequency: import("@difm/shared").ScheduleFrequency;
+      time: string;
+      dayOfMonth?: number;
+      dayOfWeek?: number;
+      intervalDays?: number;
+      autoExecute: boolean;
+    };
+    missingFields: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate">;
+    clarificationPrompt?: string;
+    requiresHumanApproval: boolean;
+    safetySummary: string;
+  }> {
+    const prompt = `
+You are the AI Task Architect for "Do It For Me" (DIFM).
+The user gave a raw, rough, informal, or unstructured task description:
+"${params.rawGoal}"
+
+Current Webpage URL: ${params.currentUrl || "None"}
+User Active Profile: ${JSON.stringify(params.userProfile || {})}
+
+Your job:
+1. Clean and format this into a clear, professional, step-by-step agent goal ("formattedGoal").
+2. Create a concise task title ("title", max 50 chars).
+3. Detect category from ["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "SHOPPING", "FORM_FILL", "GENERAL"].
+4. Detect billingCycle from ["MONTHLY", "QUARTERLY", "YEARLY", "ADVANCE", "ONE_TIME", "CUSTOM"].
+5. Extract dueDate (YYYY-MM-DD), dueAmount (e.g. ₹1,450.00), consumerNumber (account/CA/consumer ID/phone), providerName (e.g. CESC, Airtel, Tata Power, etc.), targetUrl (official portal or target webpage).
+6. Detect if schedule is requested (e.g. "every month on 5th", "daily at 9am", "by next week"):
+   - frequency: "MONTHLY" | "WEEKLY" | "DAILY" | "CUSTOM_DAYS" | "ONCE"
+   - time: e.g. "09:30"
+   - dayOfMonth: (1-31) if monthly
+   - dayOfWeek: (0-6) if weekly
+   - autoExecute: false (CRITICAL: always false for financial actions so user confirms payment).
+7. Identify missing critical fields needed for execution/scheduling from ["consumerNumber", "providerName", "dueAmount", "targetUrl", "dueDate"].
+8. Write a friendly, polite clarificationPrompt asking for the missing fields if any are required.
+9. State safety reminder: "Safety Guard: Agent will navigate, retrieve the bill/QR code, and trigger a confirmation reminder before finalizing any financial payment or sensitive submission."
+
+Respond with ONLY a JSON object in this schema:
+{
+  "formattedGoal": "...",
+  "title": "...",
+  "category": "ELECTRICITY",
+  "billingCycle": "MONTHLY",
+  "dueDate": "YYYY-MM-DD",
+  "dueAmount": "₹1,450.00",
+  "consumerNumber": "...",
+  "providerName": "...",
+  "targetUrl": "...",
+  "schedule": {
+    "enabled": true,
+    "frequency": "MONTHLY",
+    "time": "09:30",
+    "dayOfMonth": 5,
+    "autoExecute": false
+  },
+  "missingFields": ["consumerNumber"],
+  "clarificationPrompt": "...",
+  "requiresHumanApproval": true,
+  "safetySummary": "..."
+}
+`;
+
+    const candidateModels = [
+      this.model,
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "qwen/qwen3.8-27b",
+      "allam-2-7b"
+    ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
+
+    for (const modelToTry of candidateModels) {
+      try {
+        let messageContent = "";
+        try {
+          const response = await this.client.chat.completions.create({
+            model: modelToTry,
+            messages: [
+              { role: "system", content: "You are the DIFM Task Architect. Respond in valid JSON." },
+              { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            max_tokens: 800
+          });
+          messageContent = response.choices[0]?.message?.content || "{}";
+        } catch (jsonErr: any) {
+          if (jsonErr?.status === 400 || jsonErr?.message?.includes("JSON")) {
+            const fallbackResponse = await this.client.chat.completions.create({
+              model: modelToTry,
+              messages: [
+                { role: "system", content: "You are the DIFM Task Architect. Respond in valid JSON." },
+                { role: "user", content: `${prompt}\n\nReturn ONLY a valid JSON object.` }
+              ],
+              temperature: 0.1,
+              max_tokens: 800
+            });
+            messageContent = fallbackResponse.choices[0]?.message?.content || "{}";
+          } else {
+            throw jsonErr;
+          }
+        }
+
+        let parsed: any = {};
+        try {
+          parsed = JSON.parse(messageContent);
+        } catch {
+          const jsonMatch = messageContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+        }
+
+        if (parsed.title || parsed.formattedGoal) {
+          return {
+            formattedGoal: parsed.formattedGoal || params.rawGoal,
+            title: parsed.title || params.rawGoal.slice(0, 50),
+            category: parsed.category || "GENERAL",
+            billingCycle: parsed.billingCycle || "MONTHLY",
+            dueDate: parsed.dueDate || undefined,
+            dueAmount: parsed.dueAmount || undefined,
+            consumerNumber: parsed.consumerNumber || undefined,
+            providerName: parsed.providerName || undefined,
+            targetUrl: normalizeExtractedUrl(parsed.targetUrl || params.currentUrl, params.rawGoal),
+            schedule: parsed.schedule || {
+              enabled: /every|monthly|daily|weekly|schedule/i.test(params.rawGoal),
+              frequency: "MONTHLY",
+              time: "09:30",
+              dayOfMonth: 5,
+              autoExecute: false
+            },
+            missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields : [],
+            clarificationPrompt: parsed.clarificationPrompt || undefined,
+            requiresHumanApproval: true,
+            safetySummary: parsed.safetySummary || "Safety Guard: Agent will navigate and prepare payment, reminding you for final approval before any charge."
+          };
+        }
+      } catch (err) {
+        console.warn(`parseRoughTask attempt with model ${modelToTry} failed:`, err);
+        continue;
+      }
+    }
+
+    // Heuristic Fallback
+    const raw = params.rawGoal;
+    let category: import("@difm/shared").TaskCategory = "GENERAL";
+    let providerName: string | undefined = undefined;
+    let portalUrl = params.currentUrl || "";
+
+    if (/cesc/i.test(raw)) {
+      category = "ELECTRICITY";
+      providerName = "CESC Electricity";
+      portalUrl = "https://www.cesc.co.in";
+    } else if (/electricity|power|bescom|tata power/i.test(raw)) {
+      category = "ELECTRICITY";
+      providerName = "Electricity Board";
+    } else if (/airtel|jio|broadband|recharge/i.test(raw)) {
+      category = "MOBILE";
+      providerName = "Mobile / Broadband";
+    } else if (/water/i.test(raw)) {
+      category = "WATER";
+      providerName = "Water Department";
+    }
+
+    const numMatch = raw.match(/\b(\d{6,18})\b/);
+    const amtMatch =
+      raw.match(/(?:rs\.?|inr|₹|\$|bill\s+of|amount\s+of|amount\s*:?|amt\s*:?|of)\s*([\d,]+(?:\.\d{2})?)/i) ||
+      raw.match(/\b([\d,]+(?:\.\d{2})?)\s*(?:rs|rupees|inr)\b/i);
+    const dateMatch = raw.match(/(?:by|before|on|due)?\s*((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{0,4}))/i);
+
+    const missing: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate"> = [];
+    if (!numMatch && category !== "GENERAL") missing.push("consumerNumber");
+    if (!providerName && !portalUrl) missing.push("providerName");
+
+    const title = providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw);
+    const formattedGoal = `Autonomously perform: ${raw}. Locate target form/account field, populate verified user details, verify amount, and present confirmation for human approval.`;
+
+    return {
+      formattedGoal,
+      title,
+      category,
+      billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : "MONTHLY",
+      dueDate: dateMatch ? dateMatch[1] : undefined,
+      dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
+      consumerNumber: numMatch ? numMatch[1] : undefined,
+      providerName,
+      targetUrl: normalizeExtractedUrl(portalUrl, raw),
+      schedule: {
+        enabled: /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
+        frequency: "MONTHLY",
+        time: "09:30",
+        dayOfMonth: 5,
+        autoExecute: false
+      },
+      missingFields: missing,
+      clarificationPrompt: missing.length > 0 ? `Please provide your ${missing.join(" and ")} to finalize this scheduled task.` : undefined,
+      requiresHumanApproval: true,
+      safetySummary: "Safety Guard: Irreversible payments and submissions will always pause for your explicit confirmation."
+    };
+  }
 }

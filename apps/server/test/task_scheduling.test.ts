@@ -134,4 +134,23 @@ describe("Task Management & Scheduling", () => {
     expect(clone.priority).toBe("HIGH");
     expect(clone.targetUrl).toBe("https://www.google.com/recaptcha/api2/demo");
   });
+
+  it("parses and formats rough task notes, detects missing fields, and enforces safety", async () => {
+    const { PlannerService } = await import("../src/planner.js");
+    const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+
+    const parsed = await planner.parseRoughTask({
+      rawGoal: "pay my cesc bill of 1450 before oct 15 every month on 5th"
+    });
+
+    expect(parsed.title).toContain("CESC");
+    expect(parsed.category).toBe("ELECTRICITY");
+    expect(parsed.targetUrl).toBe("https://www.cesc.co.in");
+    expect(parsed.dueAmount).toContain("1450");
+    expect(parsed.schedule?.enabled).toBe(true);
+    expect(parsed.schedule?.autoExecute).toBe(false); // Safety guard: user approval required
+    expect(parsed.requiresHumanApproval).toBe(true);
+    expect(parsed.missingFields).toContain("consumerNumber");
+    expect(parsed.clarificationPrompt).toBeDefined();
+  });
 });

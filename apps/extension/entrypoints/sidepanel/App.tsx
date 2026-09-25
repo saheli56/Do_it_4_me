@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "preact/hooks";
-import { DEFAULT_NOTIFICATION_SETTINGS } from "@difm/shared";
 import type {
   TaskState,
   ServerMessage,
@@ -18,8 +17,7 @@ import type {
   AppAccentColor,
   ExecutionStepDetail,
   BillExtractResult,
-  BillingCycle,
-  NotificationSettings
+  BillingCycle
 } from "@difm/shared";
 import {
   LightningIcon,
@@ -68,10 +66,7 @@ import {
   UploadSimpleIcon,
   ScanIcon,
   FileArrowUpIcon,
-  FloppyDiskIcon,
-  BellSimpleIcon,
-  PaperPlaneTiltIcon,
-  WhatsappLogoIcon
+  FloppyDiskIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -561,6 +556,34 @@ export function App() {
   const [editingProfile, setEditingProfile] = useState<UserProfile | null>(null);
   const [isCreatingNewProfile, setIsCreatingNewProfile] = useState(false);
 
+  // AI Smart Task Architect & Auto-Scheduler State
+  const [isSmartSchedulerOpen, setIsSmartSchedulerOpen] = useState(false);
+  const [isFormattingTask, setIsFormattingTask] = useState(false);
+  const [parsedTaskDraft, setParsedTaskDraft] = useState<{
+    formattedGoal: string;
+    title: string;
+    category: TaskCategory;
+    billingCycle: BillingCycle;
+    dueDate?: string;
+    dueAmount?: string;
+    consumerNumber?: string;
+    providerName?: string;
+    targetUrl?: string;
+    schedule?: {
+      enabled: boolean;
+      frequency: ScheduleFrequency;
+      time: string;
+      dayOfMonth?: number;
+      dayOfWeek?: number;
+      intervalDays?: number;
+      autoExecute: boolean;
+    };
+    missingFields: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate">;
+    clarificationPrompt?: string;
+    requiresHumanApproval: boolean;
+    safetySummary: string;
+  } | null>(null);
+
   // Profile Editor Form State
   const [profLabel, setProfLabel] = useState("");
   const [profIcon, setProfIcon] = useState<ProfileIconType>("user");
@@ -580,23 +603,6 @@ export function App() {
   const [profDesignation, setProfDesignation] = useState("");
   const [profNotes, setProfNotes] = useState("");
   const [profCustomAttrs, setProfCustomAttrs] = useState<Array<{ key: string; value: string }>>([]);
-
-  // Notification Bridges & Webhooks State
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => {
-    try {
-      const cached = localStorage.getItem("difm_notification_settings");
-      return cached ? { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(cached) } : DEFAULT_NOTIFICATION_SETTINGS;
-    } catch {
-      return DEFAULT_NOTIFICATION_SETTINGS;
-    }
-  });
-  const [testNotificationStatus, setTestNotificationStatus] = useState<{
-    channel: string;
-    loading: boolean;
-    success?: boolean;
-    message?: string;
-  } | null>(null);
 
   // Pending Tasks & Scheduling State
   const [pendingTasks, setPendingTasks] = useState<PendingTaskItem[]>(() => {
@@ -1050,56 +1056,6 @@ export function App() {
     }
   };
 
-  const fetchNotificationSettings = async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:3001/notifications/config");
-      if (res.ok) {
-        const data = (await res.json()) as { settings: NotificationSettings };
-        if (data.settings) {
-          setNotificationSettings(data.settings);
-          localStorage.setItem("difm_notification_settings", JSON.stringify(data.settings));
-        }
-      }
-    } catch {}
-  };
-
-  const handleSaveNotificationSettings = async (newSettings: NotificationSettings) => {
-    setNotificationSettings(newSettings);
-    localStorage.setItem("difm_notification_settings", JSON.stringify(newSettings));
-    try {
-      await fetch("http://127.0.0.1:3001/notifications/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: newSettings })
-      });
-    } catch {}
-  };
-
-  const handleTestNotificationChannel = async (channel: "TELEGRAM" | "WHATSAPP" | "WEBHOOK") => {
-    setTestNotificationStatus({ channel, loading: true });
-    try {
-      const res = await fetch("http://127.0.0.1:3001/notifications/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel })
-      });
-      const data = (await res.json()) as { success: boolean; message: string };
-      setTestNotificationStatus({
-        channel,
-        loading: false,
-        success: data.success,
-        message: data.message || (data.success ? "Test notification delivered successfully!" : "Failed to deliver test notification.")
-      });
-    } catch (err: unknown) {
-      setTestNotificationStatus({
-        channel,
-        loading: false,
-        success: false,
-        message: err instanceof Error ? err.message : "Network error testing notification"
-      });
-    }
-  };
-
   const captureTabObservationWithRetry = async (
     tabId: number,
     currentTaskId: string,
@@ -1491,7 +1447,6 @@ export function App() {
     setupSocket();
     fetchProfiles();
     fetchPendingTasks();
-    fetchNotificationSettings();
 
     const handleRuntimeMessage = (message: any) => {
       if (message.type === "TRIGGER_DUE_TASK" && message.task) {
@@ -1923,6 +1878,92 @@ export function App() {
       fetchPendingTasks();
     } catch (e) {
       console.error("Failed to save goal as task:", e);
+    }
+  };
+
+  const handleSmartFormatAndSchedule = async () => {
+    if (!goal.trim()) return;
+    setIsFormattingTask(true);
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const res = await fetch("http://127.0.0.1:3001/parse-rough-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawGoal: goal.trim(),
+          currentUrl: tab?.url,
+          userProfile: currentActiveProfile
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.result) {
+          setParsedTaskDraft(data.result);
+          setIsSmartSchedulerOpen(true);
+        }
+      }
+    } catch (e) {
+      console.error("Smart format failed:", e);
+    } finally {
+      setIsFormattingTask(false);
+    }
+  };
+
+  const handleConfirmSmartScheduledTask = async (andRun = false) => {
+    if (!parsedTaskDraft) return;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const customerFullName = [currentActiveProfile?.firstName, currentActiveProfile?.lastName].filter(Boolean).join(" ");
+
+      const billerInfo = {
+        providerName: parsedTaskDraft.providerName || undefined,
+        billType: parsedTaskDraft.category,
+        billingCycle: parsedTaskDraft.billingCycle,
+        consumerNumber: parsedTaskDraft.consumerNumber || undefined,
+        amount: parsedTaskDraft.dueAmount || undefined,
+        portalUrl: parsedTaskDraft.targetUrl || undefined,
+        firstName: currentActiveProfile?.firstName || undefined,
+        lastName: currentActiveProfile?.lastName || undefined,
+        customerName: customerFullName || undefined,
+        phoneNumber: currentActiveProfile?.phone || undefined,
+        emailAddress: currentActiveProfile?.email || undefined,
+        additionalInstructions: parsedTaskDraft.formattedGoal
+      };
+
+      const res = await fetch("http://127.0.0.1:3001/pending-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: parsedTaskDraft.title,
+          priority: "HIGH",
+          category: parsedTaskDraft.category,
+          dueDate: parsedTaskDraft.dueDate || undefined,
+          notes: parsedTaskDraft.formattedGoal,
+          targetUrl: parsedTaskDraft.targetUrl || tab?.url || undefined,
+          schedule: parsedTaskDraft.schedule,
+          billerInfo
+        })
+      });
+
+      if (res.ok) {
+        setIsSmartSchedulerOpen(false);
+        setSuccessMessage({
+          title: "Task Formatted & Scheduled Successfully",
+          summary: `"${parsedTaskDraft.title}" has been structured and added to your schedules. Sensitive actions will pause for your confirmation.`
+        });
+        fetchPendingTasks();
+
+        if (andRun) {
+          setActiveTab("EXECUTE");
+          setGoal(parsedTaskDraft.formattedGoal);
+          handleStartTask(parsedTaskDraft.formattedGoal, parsedTaskDraft.targetUrl || undefined);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save scheduled task:", e);
     }
   };
 
@@ -2499,47 +2540,10 @@ export function App() {
                       <span class="text-[9px] text-zinc-500">{activePendingCount} Pending / Active</span>
                     </div>
                   </button>
-
-                  {/* Notification Bridges & Webhooks */}
-                  <button
-                    onClick={() => {
-                      setIsMoreMenuOpen(false);
-                      setIsNotificationModalOpen(true);
-                      fetchNotificationSettings();
-                    }}
-                    class="w-full px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition"
-                  >
-                    <div class="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
-                      <BellSimpleIcon size={12} />
-                    </div>
-                    <div class="flex flex-col min-w-0">
-                      <span class="text-[11px] font-semibold">Notification Bridges</span>
-                      <span class="text-[9px] text-zinc-500">Telegram, WhatsApp, Webhooks</span>
-                    </div>
-                  </button>
                 </div>
               </div>
             )}
           </div>
-
-          {/* Quick Notification Bridge Bell Button */}
-          <button
-            onClick={() => {
-              setIsNotificationModalOpen(true);
-              fetchNotificationSettings();
-            }}
-            class={`p-1.5 rounded-lg border transition active:scale-95 shrink-0 relative ${
-              notificationSettings.telegram.enabled || notificationSettings.whatsapp.enabled || notificationSettings.webhook.enabled
-                ? "bg-zinc-900/90 hover:bg-zinc-800 border-white/[0.12] text-zinc-300 hover:text-white"
-                : "bg-zinc-900/90 hover:bg-zinc-800 border-white/[0.08] text-zinc-500 hover:text-zinc-300"
-            }`}
-            title="Notification Bridges & Webhooks"
-          >
-            <BellSimpleIcon size={14} />
-            {(notificationSettings.telegram.enabled || notificationSettings.whatsapp.enabled || notificationSettings.webhook.enabled) && (
-              <span class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-            )}
-          </button>
         </div>
       </header>
 
@@ -2679,14 +2683,27 @@ export function App() {
                 </button>
               </div>
             ) : (
-              <div class="flex gap-2">
+              <div class="flex flex-wrap gap-2">
                 <button
                   onClick={() => handleStartTask()}
                   disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
-                  class="flex-1 shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
+                  class="flex-1 min-w-[130px] shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
                 >
                   <PlayIcon size={13} class="text-white fill-current" />
                   <span>Execute Goal in Tab</span>
+                </button>
+                <button
+                  onClick={handleSmartFormatAndSchedule}
+                  disabled={!goal.trim() || isFormattingTask}
+                  title="Format rough task with AI, detect missing details, and auto-schedule"
+                  class="px-3 h-9 shimmer-btn text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition shadow-sm"
+                >
+                  {isFormattingTask ? (
+                    <div class="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <SparkleIcon size={13} class="text-amber-300" />
+                  )}
+                  <span>AI Format & Schedule</span>
                 </button>
                 <button
                   onClick={handleSaveCurrentGoalAsTask}
@@ -5173,23 +5190,32 @@ export function App() {
         </div>
       )}
 
-      {/* Notification Bridges & Webhooks Modal */}
-      {isNotificationModalOpen && (
+      {/* AI Smart Task Architect & Auto-Scheduler Modal */}
+      {isSmartSchedulerOpen && parsedTaskDraft && (
         <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in">
-          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden border border-white/[0.12] bg-zinc-950/95 animate-scale-in">
+          <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden border border-white/[0.14] bg-zinc-950/95 animate-scale-in">
             {/* Modal Header */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
               <div class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                  <BellSimpleIcon size={13} />
+                <div
+                  class="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-sm"
+                  style={{
+                    background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                  }}
+                >
+                  <SparkleIcon size={14} />
                 </div>
                 <div>
-                  <h3 class="text-xs font-bold text-zinc-100">Notification Bridges & Webhooks</h3>
-                  <p class="text-[10px] text-zinc-400">Receive instant alerts via Telegram, WhatsApp, or Webhook</p>
+                  <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                    AI Task Architect & Schedule
+                  </h3>
+                  <p class="text-[10px] text-zinc-400">
+                    Rough task formatted & structured into an automated schedule
+                  </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsNotificationModalOpen(false)}
+                onClick={() => setIsSmartSchedulerOpen(false)}
                 class="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05] transition"
               >
                 <XIcon size={14} />
@@ -5197,370 +5223,321 @@ export function App() {
             </div>
 
             {/* Modal Body */}
-            <div class="p-3.5 space-y-4 text-xs overflow-y-auto bg-zinc-950/70">
-              {/* Status Notice Banner */}
-              {testNotificationStatus && (
-                <div
-                  class={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 animate-fade-in ${
-                    testNotificationStatus.loading
-                      ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
-                      : testNotificationStatus.success
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                      : "bg-rose-500/10 border-rose-500/30 text-rose-300"
-                  }`}
-                >
-                  <div class="flex items-center gap-2 min-w-0">
-                    {testNotificationStatus.loading ? (
-                      <div class="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                    ) : testNotificationStatus.success ? (
-                      <CheckIcon size={14} class="text-emerald-400 shrink-0" />
-                    ) : (
-                      <XIcon size={14} class="text-rose-400 shrink-0" />
-                    )}
-                    <span class="truncate text-[11px]">
-                      {testNotificationStatus.loading ? `Sending test message to ${testNotificationStatus.channel}...` : testNotificationStatus.message}
-                    </span>
+            <div class="p-4 space-y-3.5 text-xs overflow-y-auto custom-scrollbar flex-1">
+              {/* Safety Shield Guard Banner */}
+              {parsedTaskDraft.requiresHumanApproval && (
+                <div class="p-3 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 flex items-start gap-2.5 shadow-sm">
+                  <ShieldCheckIcon size={18} class="text-amber-400 shrink-0 mt-0.5" />
+                  <div class="space-y-0.5">
+                    <div class="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+                      Safety Policy Active: Human Confirmation Required
+                    </div>
+                    <p class="text-[10px] text-amber-200/90 leading-relaxed">
+                      {parsedTaskDraft.safetySummary ||
+                        "Sensitive financial/payment actions will not be finalized autonomously. The agent will navigate and prepare everything, then pause and remind you for final approval."}
+                    </p>
                   </div>
-                  <button
-                    onClick={() => setTestNotificationStatus(null)}
-                    class="text-zinc-400 hover:text-white shrink-0 p-0.5"
-                  >
-                    <XIcon size={11} />
-                  </button>
                 </div>
               )}
 
-              {/* 1. Telegram Bridge */}
-              <div class="p-3 rounded-xl bg-zinc-900/60 border border-white/[0.06] space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <div class="w-5 h-5 rounded bg-sky-500/20 text-sky-400 flex items-center justify-center">
-                      <PaperPlaneTiltIcon size={12} />
+              {/* Missing Fields / Clarification Needed Banner & Inputs */}
+              {parsedTaskDraft.missingFields && parsedTaskDraft.missingFields.length > 0 && (
+                <div class="p-3.5 rounded-xl border border-purple-500/30 bg-purple-950/20 text-purple-200 space-y-2.5">
+                  <div class="flex items-start gap-2">
+                    <InfoIcon size={16} class="text-purple-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 class="text-[11px] font-bold text-purple-300">Missing Information Needed</h4>
+                      <p class="text-[10px] text-purple-200/90 leading-relaxed">
+                        {parsedTaskDraft.clarificationPrompt ||
+                          "Please provide the following details to ensure accurate automated scheduling and reminders:"}
+                      </p>
                     </div>
-                    <span class="font-semibold text-zinc-200">Telegram Bot</span>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.telegram.enabled}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          telegram: { ...notificationSettings.telegram, enabled: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="sr-only peer"
-                    />
-                    <div class="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-500"></div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {parsedTaskDraft.missingFields.includes("consumerNumber") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Consumer / Account # <span class="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={parsedTaskDraft.consumerNumber || ""}
+                          placeholder="e.g. 05001234567"
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              consumerNumber: (e.target as HTMLInputElement).value
+                            })
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/30 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    )}
+
+                    {parsedTaskDraft.missingFields.includes("providerName") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Provider / Biller <span class="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={parsedTaskDraft.providerName || ""}
+                          placeholder="e.g. CESC, WBSEDCL"
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              providerName: (e.target as HTMLInputElement).value
+                            })
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/30 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    )}
+
+                    {parsedTaskDraft.missingFields.includes("dueAmount") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Expected / Max Amount
+                        </label>
+                        <input
+                          type="text"
+                          value={parsedTaskDraft.dueAmount || ""}
+                          placeholder="e.g. 1450"
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              dueAmount: (e.target as HTMLInputElement).value
+                            })
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/30 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    )}
+
+                    {parsedTaskDraft.missingFields.includes("dueDate") && (
+                      <div>
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Due Date
+                        </label>
+                        <input
+                          type="date"
+                          value={parsedTaskDraft.dueDate || ""}
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              dueDate: (e.target as HTMLInputElement).value
+                            })
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/30 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    )}
+
+                    {parsedTaskDraft.missingFields.includes("targetUrl") && (
+                      <div class="sm:col-span-2">
+                        <label class="block text-[10px] font-semibold text-purple-200 mb-1">
+                          Portal URL (optional)
+                        </label>
+                        <input
+                          type="url"
+                          value={parsedTaskDraft.targetUrl || ""}
+                          placeholder="https://example.com/payment"
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              targetUrl: (e.target as HTMLInputElement).value
+                            })
+                          }
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-purple-500/30 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Task Title & Category */}
+              <div class="space-y-2.5">
+                <div>
+                  <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Task Title
                   </label>
+                  <input
+                    type="text"
+                    value={parsedTaskDraft.title}
+                    onInput={(e) =>
+                      setParsedTaskDraft({
+                        ...parsedTaskDraft,
+                        title: (e.target as HTMLInputElement).value
+                      })
+                    }
+                    class="w-full px-3 py-2 rounded-xl bg-zinc-900/80 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-white/20"
+                  />
                 </div>
 
-                {notificationSettings.telegram.enabled && (
-                  <div class="space-y-2 pt-1 border-t border-white/[0.06]">
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Bot Token (from @BotFather)</label>
-                      <input
-                        type="password"
-                        placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
-                        value={notificationSettings.telegram.botToken || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            telegram: { ...notificationSettings.telegram, botToken: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-sky-500/50"
-                      />
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={parsedTaskDraft.category}
+                      onChange={(e) =>
+                        setParsedTaskDraft({
+                          ...parsedTaskDraft,
+                          category: (e.target as HTMLSelectElement).value as TaskCategory
+                        })
+                      }
+                      class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-xs text-zinc-200 focus:outline-none"
+                    >
+                      <option value="ELECTRICITY">Electricity</option>
+                      <option value="WATER">Water</option>
+                      <option value="GAS">Gas</option>
+                      <option value="BROADBAND">Broadband</option>
+                      <option value="MOBILE">Mobile</option>
+                      <option value="CREDIT_CARD">Credit Card</option>
+                      <option value="INSURANCE">Insurance</option>
+                      <option value="RENT">Rent</option>
+                      <option value="SUBSCRIPTION">Subscription</option>
+                      <option value="TAX">Tax</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                      Billing Cycle
+                    </label>
+                    <select
+                      value={parsedTaskDraft.billingCycle}
+                      onChange={(e) =>
+                        setParsedTaskDraft({
+                          ...parsedTaskDraft,
+                          billingCycle: (e.target as HTMLSelectElement).value as BillingCycle
+                        })
+                      }
+                      class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-xs text-zinc-200 focus:outline-none"
+                    >
+                      <option value="MONTHLY">Monthly</option>
+                      <option value="QUARTERLY">Quarterly</option>
+                      <option value="BI_MONTHLY">Bi-Monthly</option>
+                      <option value="YEARLY">Yearly</option>
+                      <option value="ONE_OFF">One-Off</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Formatted Goal / Execution Instructions */}
+                <div>
+                  <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Formatted Execution Goal
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={parsedTaskDraft.formattedGoal}
+                    onInput={(e) =>
+                      setParsedTaskDraft({
+                        ...parsedTaskDraft,
+                        formattedGoal: (e.target as HTMLTextAreaElement).value
+                      })
+                    }
+                    class="w-full px-3 py-2 rounded-xl bg-zinc-900/80 border border-white/[0.08] text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-white/20 resize-none"
+                  />
+                </div>
+
+                {/* Schedule Configuration Card */}
+                {parsedTaskDraft.schedule && (
+                  <div class="p-3 rounded-xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+                        <ClockIcon size={14} class="text-zinc-400" />
+                        <span>Schedule Trigger</span>
+                      </div>
+                      <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-white/[0.06] text-zinc-300">
+                        {parsedTaskDraft.schedule.frequency} • {parsedTaskDraft.schedule.time}
+                        {parsedTaskDraft.schedule.dayOfMonth ? ` • Day ${parsedTaskDraft.schedule.dayOfMonth}` : ""}
+                      </span>
                     </div>
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Chat ID (Your user ID or Group Chat ID)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 987654321 or -100123456789"
-                        value={notificationSettings.telegram.chatId || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            telegram: { ...notificationSettings.telegram, chatId: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-sky-500/50"
-                      />
-                    </div>
-                    <div class="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleTestNotificationChannel("TELEGRAM")}
-                        class="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 border border-sky-500/30 text-[11px] font-medium transition flex items-center gap-1.5"
-                      >
-                        <PaperPlaneTiltIcon size={11} />
-                        <span>Send Test Alert</span>
-                      </button>
+
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span class="text-zinc-400">Frequency:</span>
+                        <select
+                          value={parsedTaskDraft.schedule.frequency}
+                          onChange={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              schedule: {
+                                ...parsedTaskDraft.schedule!,
+                                frequency: (e.target as HTMLSelectElement).value as ScheduleFrequency
+                              }
+                            })
+                          }
+                          class="mt-1 w-full px-2 py-1 rounded bg-zinc-800 border border-white/[0.08] text-xs text-zinc-200"
+                        >
+                          <option value="MONTHLY">Monthly</option>
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="DAILY">Daily</option>
+                          <option value="ONCE">Once</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <span class="text-zinc-400">Time:</span>
+                        <input
+                          type="time"
+                          value={parsedTaskDraft.schedule.time}
+                          onInput={(e) =>
+                            setParsedTaskDraft({
+                              ...parsedTaskDraft,
+                              schedule: {
+                                ...parsedTaskDraft.schedule!,
+                                time: (e.target as HTMLInputElement).value
+                              }
+                            })
+                          }
+                          class="mt-1 w-full px-2 py-1 rounded bg-zinc-800 border border-white/[0.08] text-xs text-zinc-200"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* 2. WhatsApp Bridge */}
-              <div class="p-3 rounded-xl bg-zinc-900/60 border border-white/[0.06] space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <div class="w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                      <WhatsappLogoIcon size={12} />
-                    </div>
-                    <span class="font-semibold text-zinc-200">WhatsApp Alert</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.whatsapp.enabled}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          whatsapp: { ...notificationSettings.whatsapp, enabled: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="sr-only peer"
-                    />
-                    <div class="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
-                  </label>
-                </div>
-
-                {notificationSettings.whatsapp.enabled && (
-                  <div class="space-y-2 pt-1 border-t border-white/[0.06]">
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Phone Number (with Country Code)</label>
-                      <input
-                        type="text"
-                        placeholder="+919876543210"
-                        value={notificationSettings.whatsapp.phoneNumber || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            whatsapp: { ...notificationSettings.whatsapp, phoneNumber: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">CallMeBot API Key (or leave empty for custom webhook)</label>
-                      <input
-                        type="password"
-                        placeholder="e.g. 123456"
-                        value={notificationSettings.whatsapp.apiKey || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            whatsapp: { ...notificationSettings.whatsapp, apiKey: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Custom WhatsApp Gateway URL (Optional)</label>
-                      <input
-                        type="url"
-                        placeholder="https://your-whatsapp-gateway.com/send"
-                        value={notificationSettings.whatsapp.customEndpoint || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            whatsapp: { ...notificationSettings.whatsapp, customEndpoint: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-                    <div class="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleTestNotificationChannel("WHATSAPP")}
-                        class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30 text-[11px] font-medium transition flex items-center gap-1.5"
-                      >
-                        <WhatsappLogoIcon size={11} />
-                        <span>Send Test Alert</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 3. Custom Webhook / Discord / Slack Bridge */}
-              <div class="p-3 rounded-xl bg-zinc-900/60 border border-white/[0.06] space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <div class="w-5 h-5 rounded bg-violet-500/20 text-violet-400 flex items-center justify-center">
-                      <SparkleIcon size={12} />
-                    </div>
-                    <span class="font-semibold text-zinc-200">Webhook / Discord / Slack</span>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.webhook.enabled}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          webhook: { ...notificationSettings.webhook, enabled: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="sr-only peer"
-                    />
-                    <div class="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-violet-500"></div>
-                  </label>
-                </div>
-
-                {notificationSettings.webhook.enabled && (
-                  <div class="space-y-2 pt-1 border-t border-white/[0.06]">
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Webhook Target URL (Discord / Zapier / n8n / Custom)</label>
-                      <input
-                        type="url"
-                        placeholder="https://discord.com/api/webhooks/... or https://hooks.zapier.com/..."
-                        value={notificationSettings.webhook.url || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            webhook: { ...notificationSettings.webhook, url: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-violet-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label class="text-[10px] text-zinc-400 block mb-0.5">Custom Authorization Header (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="Bearer your-secret-token"
-                        value={notificationSettings.webhook.secret || ""}
-                        onInput={(e) => {
-                          const updated = {
-                            ...notificationSettings,
-                            webhook: { ...notificationSettings.webhook, secret: (e.target as HTMLInputElement).value }
-                          };
-                          handleSaveNotificationSettings(updated);
-                        }}
-                        class="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/[0.1] text-zinc-200 text-xs focus:outline-none focus:border-violet-500/50"
-                      />
-                    </div>
-                    <div class="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleTestNotificationChannel("WEBHOOK")}
-                        class="px-2.5 py-1 rounded-lg bg-violet-500/15 text-violet-300 hover:bg-violet-500/25 border border-violet-500/30 text-[11px] font-medium transition flex items-center gap-1.5"
-                      >
-                        <PaperPlaneTiltIcon size={11} />
-                        <span>Send Test Alert</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Trigger Events Configuration */}
-              <div class="p-3 rounded-xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
-                <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400 block">
-                  Notify Me When:
-                </span>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  <label class="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.events.onTaskCompleted}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          events: { ...notificationSettings.events, onTaskCompleted: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="rounded bg-zinc-950 border-white/[0.2] text-indigo-500 focus:ring-0"
-                    />
-                    <span>Task Succeeded</span>
-                  </label>
-                  <label class="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.events.onTaskFailed}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          events: { ...notificationSettings.events, onTaskFailed: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="rounded bg-zinc-950 border-white/[0.2] text-indigo-500 focus:ring-0"
-                    />
-                    <span>Task Failed</span>
-                  </label>
-                  <label class="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.events.onApprovalRequired}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          events: { ...notificationSettings.events, onApprovalRequired: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="rounded bg-zinc-950 border-white/[0.2] text-indigo-500 focus:ring-0"
-                    />
-                    <span>Approval Needed</span>
-                  </label>
-                  <label class="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.events.onSecurityCheckpoint}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          events: { ...notificationSettings.events, onSecurityCheckpoint: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="rounded bg-zinc-950 border-white/[0.2] text-indigo-500 focus:ring-0"
-                    />
-                    <span>CAPTCHA / OTP Check</span>
-                  </label>
-                  <label class="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer select-none col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={notificationSettings.events.onScheduleTriggered}
-                      onChange={(e) => {
-                        const updated = {
-                          ...notificationSettings,
-                          events: { ...notificationSettings.events, onScheduleTriggered: (e.target as HTMLInputElement).checked }
-                        };
-                        handleSaveNotificationSettings(updated);
-                      }}
-                      class="rounded bg-zinc-950 border-white/[0.2] text-indigo-500 focus:ring-0"
-                    />
-                    <span>Scheduled Bill Due Reminder</span>
-                  </label>
-                </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div class="flex items-center justify-end px-4 py-2.5 border-t border-white/[0.08] bg-zinc-950/90 shrink-0">
+            <div class="flex items-center justify-between px-4 py-3 border-t border-white/[0.08] bg-zinc-950/90 shrink-0">
               <button
-                onClick={() => setIsNotificationModalOpen(false)}
-                class="px-4 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition font-medium"
+                type="button"
+                onClick={() => setIsSmartSchedulerOpen(false)}
+                class="px-3.5 py-1.5 rounded-lg text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition font-medium"
               >
-                Save & Close
+                Cancel
               </button>
+
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmSmartScheduledTask(false)}
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800/90 hover:bg-zinc-700 border border-white/[0.12] text-zinc-200 hover:text-white transition shadow-sm active:scale-95 flex items-center gap-1.5"
+                >
+                  <FloppyDiskIcon size={13} />
+                  <span>Save Task & Schedule</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleConfirmSmartScheduledTask(true)}
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md active:scale-95 flex items-center gap-1.5"
+                  style={{
+                    background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                  }}
+                >
+                  <PlayIcon size={13} />
+                  <span>Save & Run Now</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5568,4 +5545,5 @@ export function App() {
     </div>
   );
 }
+
 
