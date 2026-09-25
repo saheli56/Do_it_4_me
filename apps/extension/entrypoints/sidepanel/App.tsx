@@ -1027,56 +1027,109 @@ export function App() {
     }
   };
 
-  const captureTabObservationWithRetry = (tabId: number, currentTaskId: string) => {
-    const attempt = () => {
-      chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
-        if (chrome.runtime.lastError || !response?.observation) {
-          // Page may have reloaded/navigated: re-inject content script and retry
+  const captureTabObservationWithRetry = async (
+    tabId: number,
+    currentTaskId: string,
+    maxAttempts = 8,
+    initialDelayMs = 500
+  ) => {
+    await new Promise((r) => setTimeout(r, initialDelayMs));
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab.url?.startsWith("chrome://") || tab.url?.startsWith("about:")) {
+          await new Promise((r) => setTimeout(r, 600));
+          continue;
+        }
+
+        const res = await new Promise<{ success?: boolean; observation?: PageObservation } | null>((resolve) => {
+          chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
+            if (chrome.runtime.lastError || !response?.observation) {
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
+        });
+
+        if (res?.observation && res.observation.interactiveNodes) {
+          lastObservationRef.current = res.observation;
+          const nextObsMsg: ExtensionMessage = {
+            type: "OBSERVATION_CAPTURED",
+            taskId: currentTaskId,
+            observation: res.observation
+          };
+          sendExtensionMessage(nextObsMsg);
+          setLogs((prev) => [
+            ...prev,
+            `Page analyzed (${res.observation!.interactiveNodes.length} interactive elements). Planning action sequence...`
+          ]);
+          return;
+        }
+
+        // Try injecting content script if not ready
+        await new Promise<void>((resolve) => {
           chrome.scripting.executeScript(
             {
               target: { tabId },
               files: ["content-scripts/content.js"]
             },
             () => {
-              setTimeout(() => {
-                chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
-                  if (retryRes?.observation) {
-                    lastObservationRef.current = retryRes.observation;
-                    const nextObsMsg: ExtensionMessage = {
-                      type: "OBSERVATION_CAPTURED",
-                      taskId: currentTaskId,
-                      observation: retryRes.observation
-                    };
-                    sendExtensionMessage(nextObsMsg);
-                    setLogs((prev) => [
-                      ...prev,
-                      `Page observed (${retryRes.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
-                    ]);
-                  }
-                });
-              }, 400);
+              // Ignore lastError during page transition
+              resolve();
             }
           );
-        } else {
-          lastObservationRef.current = response.observation;
+        });
+
+        await new Promise((r) => setTimeout(r, 450));
+
+        const retryRes = await new Promise<{ success?: boolean; observation?: PageObservation } | null>((resolve) => {
+          chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
+            if (chrome.runtime.lastError || !response?.observation) {
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
+        });
+
+        if (retryRes?.observation && retryRes.observation.interactiveNodes) {
+          lastObservationRef.current = retryRes.observation;
           const nextObsMsg: ExtensionMessage = {
             type: "OBSERVATION_CAPTURED",
             taskId: currentTaskId,
-            observation: response.observation
+            observation: retryRes.observation
           };
           sendExtensionMessage(nextObsMsg);
           setLogs((prev) => [
             ...prev,
-            `Page observed (${response.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
+            `Page analyzed (${retryRes.observation!.interactiveNodes.length} interactive elements). Planning action sequence...`
           ]);
+          return;
         }
-      });
-    };
+      } catch {
+        // Retry loop continue
+      }
 
-    setTimeout(attempt, 450);
+      await new Promise((r) => setTimeout(r, 600));
+    }
+
+    setLogs((prev) => [
+      ...prev,
+      "Please make sure the target webpage is loaded in Chrome, or refresh the tab and click Execute again."
+    ]);
   };
 
   const waitForTabComplete = async (tabId: number): Promise<void> => {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.status === "complete" && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("about:")) {
+        await new Promise((r) => setTimeout(r, 400));
+        return;
+      }
+    } catch {}
+
     await new Promise<void>((resolve) => {
       const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
         if (updatedTabId === tabId && changeInfo.status === "complete") {
@@ -1090,12 +1143,12 @@ export function App() {
         resolve();
       }, 8000);
     });
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 500));
   };
 
   const openAndPrepareTab = async (targetUrl?: string): Promise<number> => {
-    // Check if the user is already on an active tab in the current window
-    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const currentTab = tabs.find((t) => t.active) || tabs[0];
 
     // If no targetUrl is provided, or user is executing a prompt directly:
     // ALWAYS reuse the current active tab without creating or navigating away!
@@ -1107,9 +1160,19 @@ export function App() {
 
     // If targetUrl IS provided:
     if (targetUrl && targetUrl.startsWith("http")) {
-      // If current tab is already on this target portal, use it directly!
-      if (currentTab?.id && currentTab.url && currentTab.url.startsWith(targetUrl)) {
-        return currentTab.id;
+      let targetDomain = "";
+      try {
+        targetDomain = new URL(targetUrl).hostname.replace(/^www\./, "");
+      } catch {}
+
+      // If any open tab in window already matches this portal domain, activate it directly
+      if (targetDomain) {
+        const existingTab = tabs.find((t) => t.url && t.url.includes(targetDomain));
+        if (existingTab?.id) {
+          await chrome.tabs.update(existingTab.id, { active: true });
+          await waitForTabComplete(existingTab.id);
+          return existingTab.id;
+        }
       }
 
       // If current tab is a blank or new tab, navigate it instead of opening another tab
@@ -1464,46 +1527,8 @@ export function App() {
       const data = (await res.json()) as { taskId: string; state: TaskState };
       setTaskId(data.taskId);
 
-      const sendObservation = (obs: PageObservation) => {
-        const observationMsg: ExtensionMessage = {
-          type: "OBSERVATION_CAPTURED",
-          taskId: data.taskId,
-          observation: obs
-        };
-        sendExtensionMessage(observationMsg);
-        setLogs((prev) => [
-          ...prev,
-          `Page analyzed (${obs.interactiveNodes.length} interactive elements). Planning action sequence...`
-        ]);
-      };
-
-      chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
-        if (chrome.runtime.lastError || !response?.observation) {
-          chrome.scripting.executeScript(
-            {
-              target: { tabId },
-              files: ["content-scripts/content.js"]
-            },
-            () => {
-              if (chrome.runtime.lastError) {
-                setLogs((prev) => [...prev, "Error: Unable to access page. Please refresh the page tab."]);
-                return;
-              }
-              setTimeout(() => {
-                chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (retryRes) => {
-                  if (chrome.runtime.lastError || !retryRes?.observation) {
-                    setLogs((prev) => [...prev, "Please refresh the target webpage tab and click Start again."]);
-                    return;
-                  }
-                  sendObservation(retryRes.observation);
-                });
-              }, 300);
-            }
-          );
-        } else {
-          sendObservation(response.observation);
-        }
-      });
+      // Resilient initial observation capture
+      await captureTabObservationWithRetry(tabId, data.taskId, 8, 400);
     } catch {
       setLogs((prev) => [...prev, "Error: Could not connect to backend server. Make sure `pnpm dev` is running."]);
     }

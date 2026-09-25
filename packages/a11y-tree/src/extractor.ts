@@ -112,7 +112,7 @@ export function getAccessibleName(element: Element): string {
 
   if (element.tagName !== "SELECT") {
     const textContent = element.textContent?.trim().replace(/\s+/g, " ") || "";
-    if (textContent.length > 0 && textContent.length <= 120) {
+    if (textContent.length > 0 && textContent.length <= 300) {
       return textContent;
     }
   }
@@ -177,8 +177,7 @@ export function isElementVisible(element: Element): boolean {
       const style = window.getComputedStyle(element);
       if (
         style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.opacity === "0"
+        style.visibility === "hidden"
       ) {
         return false;
       }
@@ -193,7 +192,14 @@ export function isElementVisible(element: Element): boolean {
 export function isElementInteractive(element: Element, role: string): boolean {
   if (INTERACTIVE_TAGS.has(element.tagName.toUpperCase())) return true;
   if (INTERACTIVE_ROLES.has(role)) return true;
-  if (element.hasAttribute("onclick") || element.getAttribute("tabindex") === "0") return true;
+  if (
+    element.hasAttribute("onclick") ||
+    element.getAttribute("tabindex") === "0" ||
+    element.hasAttribute("data-toggle") ||
+    element.hasAttribute("data-bs-toggle")
+  ) {
+    return true;
+  }
   return false;
 }
 

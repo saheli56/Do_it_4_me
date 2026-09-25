@@ -1,17 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { PlannerService } from "../src/planner.js";
+import { PlannerService, normalizeExtractedUrl } from "../src/planner.js";
 
 describe("Bill Document Extraction & Parsing", () => {
   const planner = new PlannerService("dummy_key", "https://api.groq.com/openai/v1", "qwen/qwen3.8-27b");
 
-  it("extracts biller, consumer number, due date, and amount via heuristic fallback", async () => {
+  it("normalizes extracted URLs and fixes OCR typos like cesc.con / cesc.coin", () => {
+    expect(normalizeExtractedUrl("https://www.cesc.con")).toBe("https://www.cesc.co.in");
+    expect(normalizeExtractedUrl("cesc.con")).toBe("https://www.cesc.co.in");
+    expect(normalizeExtractedUrl("cesc.coin")).toBe("https://www.cesc.co.in");
+    expect(normalizeExtractedUrl("http://cesc.co.in")).toBe("https://www.cesc.co.in");
+    expect(normalizeExtractedUrl(undefined, "CESC Limited Electricity Bill portal: cesc.con")).toBe("https://www.cesc.co.in");
+  });
+
+  it("extracts biller, consumer number, due date, portalUrl, and amount via heuristic fallback", async () => {
     const billSampleText = `
       CESC Limited - Electricity Bill for August 2026
       Consumer ID: 102938492019
-      Customer Name: John Doe
+      Customer Name: Saheli Mukherjee
       Bill Due Date: 2026-10-15
       Net Payable Amount: Rs. 1,450.00
       Subdivision: Central Kolkata Zone
+      Payment website: https://www.cesc.con
     `;
 
     const result = await planner.extractBillDetails({
@@ -25,7 +34,8 @@ describe("Bill Document Extraction & Parsing", () => {
     expect(result.dueDate).toBe("2026-10-15");
     expect(result.dueAmount).toContain("1,450.00");
     expect(result.category).toBe("ELECTRICITY");
-    expect(result.customerName).toBe("John Doe");
+    expect(result.customerName).toBe("Saheli Mukherjee");
+    expect(result.portalUrl).toBe("https://www.cesc.co.in");
   });
 
   it("extracts mobile / broadband invoice correctly", async () => {
@@ -49,3 +59,4 @@ describe("Bill Document Extraction & Parsing", () => {
     expect(result.category).toBe("MOBILE");
   });
 });
+

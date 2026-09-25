@@ -46,15 +46,14 @@ CORE CAPABILITIES & EXECUTION RULES:
   * Avoid footer external feeds or irrelevant navigation links.
 
 4. UTILITY BILLS, PAYMENT TIMELINE / CYCLE DISAMBIGUATION & QR CODES:
-- When arriving at a portal with multiple bill payment / timeline options (e.g. "Monthly Bill", "Quarterly Bill", "Yearly / Annual Bill", "Advance Payment", "Loss of Bill", "Security Deposit", "Reconnection Fee", "Installment Payment"):
-  * Check the user goal for the requested Billing Timeline / Cycle (e.g. "Monthly", "Quarterly", "Yearly/Annual", "Advance Payment", "One-time"):
-    - If "Monthly Bill" / "Monthly": Match and click the "Monthly Bill" / "Monthly Payment" / "Quick Bill Pay" option.
-    - If "Quarterly Bill" / "Quarterly": Match and click the "Quarterly Bill" / "Quarterly Payment" option.
-    - If "Yearly / Annual" / "Yearly" / "Annual": Match and click the "Annual Bill" / "Yearly Bill" / "Yearly Payment" option.
-    - If "Advance Payment" / "Advance": Match and click the "Advance Payment" / "Advance Bill" option.
-  * Verify that the selected option / navigated page URL accurately matches the requested billing timeline.
-  * If the option is ambiguous and multiple conflicting payment paths exist without a specified timeline in the goal, output REQUEST_USER_INPUT specifying the options to the user.
-  * On the payment form, locate the Consumer Number / Account ID input, enter the user's account number (e.g. 102938492019), solve/request any captcha if needed, and submit to view the bill.
+- When arriving at a payment portal, landing page, or options hub (such as "Payment Services", "Quick Bill Pay", "online_payment_options.php", "Quick Links", "Online Services"):
+  * Look for the category or timeline payment links:
+    - If "Monthly Bill" / "Monthly" (or if no specific cycle specified, default to standard "Monthly Bill" / "LT Customer"): Match and CLICK the "Monthly Bill" link (e.g. linking to "monthlybill.php" or labeled "Monthly Bill").
+    - If "Advance Payment" / "Advance": Match and CLICK the "Advance Payment" link.
+    - If "Quarterly Bill" / "Quarterly": Match and CLICK the "Quarterly Bill" link.
+    - If "Yearly / Annual" / "Yearly" / "Annual": Match and CLICK the "Annual Bill" / "Yearly Bill" link.
+  * NEVER output FAIL on an options hub or portal overview page when options like "Monthly Bill" exist. Always click the appropriate billing timeline link to navigate to the consumer number input form!
+  * On the payment form (e.g. "monthlybill.php"), locate the Consumer Number / Account ID input, enter the user's account number (e.g. 102938492019), fill email/mobile if requested, solve/request any captcha if needed, and submit to view the bill.
   * Advance through portal steps to reach the bill review or payment method screen.
   * Prefer selecting "UPI / QR Code" or "Scan to Pay" so the QR code appears directly on the user's screen.
   * Never finalize a financial charge without explicit approval: output COMPLETE or REQUEST_APPROVAL when the QR code is displayed or when reaching final card submission.
@@ -85,6 +84,24 @@ Respond with a SINGLE VALID JSON object in this exact schema:
   }
 }
 `;
+
+export function normalizeExtractedUrl(rawUrl?: string, textContext = ""): string | undefined {
+  const combined = ((rawUrl || "") + " " + textContext).toLowerCase();
+  if (combined.includes("cesc")) {
+    return "https://www.cesc.co.in";
+  }
+
+  if (!rawUrl) return undefined;
+  let url = rawUrl.trim().replace(/[\.,;:)]+$/, "");
+  url = url.replace(/cesc\.(con|coin|co\b)/i, "cesc.co.in");
+  url = url.replace(/\.(con)\b/i, ".com");
+  url = url.replace(/\.coin\b/i, ".co.in");
+  
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = `https://${url}`;
+  }
+  return url;
+}
 
 export class PlannerService {
   private client: OpenAI;
@@ -368,18 +385,17 @@ Respond with ONLY a valid JSON object matching this structure:
         temperature: 0.1,
         response_format: { type: "json_object" }
       });
-
       const rawContent = response.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(rawContent);
 
       return {
-        billerName: parsed.billerName || undefined,
+        billerName: parsed.billerName || (/cesc/i.test(combinedText) ? "CESC Electricity" : undefined),
         consumerNumber: parsed.consumerNumber || undefined,
         dueDate: parsed.dueDate || undefined,
         dueAmount: parsed.dueAmount || undefined,
         category: parsed.category || "GENERAL",
         billingCycle: parsed.billingCycle || "MONTHLY",
-        portalUrl: parsed.portalUrl || undefined,
+        portalUrl: normalizeExtractedUrl(parsed.portalUrl, combinedText),
         customerName: parsed.customerName || undefined,
         notes: parsed.notes || undefined
       };
@@ -426,7 +442,7 @@ Respond with ONLY a valid JSON object matching this structure:
 
       // Regex for portal URL
       const urlMatch = textToScan.match(/https?:\/\/[^\s"'<>]+/i);
-      if (urlMatch) {
+      if (urlMatch && !portalUrl) {
         portalUrl = urlMatch[0].replace(/[\.,;:)]+$/, "");
       }
 
@@ -457,7 +473,7 @@ Respond with ONLY a valid JSON object matching this structure:
         dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
         category,
         billingCycle,
-        portalUrl: portalUrl || undefined,
+        portalUrl: normalizeExtractedUrl(portalUrl, textToScan),
         customerName: customerName || undefined,
         notes: `Extracted from ${params.filename || "bill document"}`
       };

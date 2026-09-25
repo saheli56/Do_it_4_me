@@ -105,4 +105,46 @@ describe("a11y-tree extractor", () => {
     expect(email).toBeDefined();
     expect(email?.value).toBe("stopallbots@gmail.com");
   });
+
+  it("extracts portal payment options inside tab panes and animated sections like online_payment_options.php", () => {
+    document.body.innerHTML = `
+      <div class="billpay" data-aos="fade-right">
+        <ul class="nav nav-tabs">
+          <li class="nav-item">
+            <a class="nav-link active" id="lt-tab" data-toggle="tab" href="#lt">LT Customer</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="ht-tab" data-toggle="tab" href="#ht">HT Customer</a>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane active" id="lt">
+            <ul>
+              <li>
+                <a href="https://srvcs.cesc.co.in/ptrlineins/mjpgav_payon/scriptfiles/monthlybill.php">
+                  <span class="label">Monthly Bill</span>
+                </a>
+              </li>
+              <li>
+                <a href="https://srvcs.cesc.co.in/ptrlineins/mjpgav_payon/scriptfiles/advancebill.php">
+                  <span class="label">Advance Payment</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const nodes = extractSemanticNodes(document.body);
+    expect(nodes.length).toBeGreaterThanOrEqual(4);
+
+    const monthlyBillLink = nodes.find((n) => n.name.includes("Monthly Bill"));
+    expect(monthlyBillLink).toBeDefined();
+    expect(monthlyBillLink?.href).toContain("monthlybill.php");
+
+    const advanceLink = nodes.find((n) => n.name.includes("Advance Payment"));
+    expect(advanceLink).toBeDefined();
+    expect(advanceLink?.href).toContain("advancebill.php");
+  });
 });
