@@ -1264,32 +1264,39 @@ export function App() {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     const currentTab = tabs.find((t) => t.active) || tabs[0];
 
-    // If no targetUrl is provided, or user is executing a prompt directly:
-    // ALWAYS reuse the current active tab without creating or navigating away!
+    // If no targetUrl is provided, reuse current active tab
     if (!targetUrl || !targetUrl.startsWith("http")) {
       if (currentTab?.id) {
         return currentTab.id;
       }
     }
 
-    // If targetUrl IS provided:
     if (targetUrl && targetUrl.startsWith("http")) {
       let targetDomain = "";
       try {
         targetDomain = new URL(targetUrl).hostname.replace(/^www\./, "");
       } catch {}
 
-      // If any open tab in window already matches this portal domain, activate it directly
+      // 1. If current active tab is ALREADY on this domain, update it to target URL
+      if (currentTab?.id && currentTab.url && targetDomain && currentTab.url.includes(targetDomain)) {
+        if (currentTab.url !== targetUrl) {
+          await chrome.tabs.update(currentTab.id, { url: targetUrl });
+          await waitForTabComplete(currentTab.id);
+        }
+        return currentTab.id;
+      }
+
+      // 2. If any other open tab matches this domain, switch to it and update URL
       if (targetDomain) {
         const existingTab = tabs.find((t) => t.url && t.url.includes(targetDomain));
         if (existingTab?.id) {
-          await chrome.tabs.update(existingTab.id, { active: true });
+          await chrome.tabs.update(existingTab.id, { url: targetUrl, active: true });
           await waitForTabComplete(existingTab.id);
           return existingTab.id;
         }
       }
 
-      // If current tab is a blank or new tab, navigate it instead of opening another tab
+      // 3. If current tab is a blank/system tab, navigate it directly
       if (
         currentTab?.id &&
         (!currentTab.url ||
@@ -1302,7 +1309,7 @@ export function App() {
         return currentTab.id;
       }
 
-      // Otherwise create a new tab for the target URL
+      // 4. Otherwise, open a fresh dedicated new tab for the target URL
       const newTab = await chrome.tabs.create({ url: targetUrl, active: true });
       if (!newTab.id) throw new Error("Unable to create browser tab");
       await waitForTabComplete(newTab.id);
@@ -1621,8 +1628,41 @@ export function App() {
     executionStepsCountRef.current = 0;
     liveExecutionStepsRef.current = [];
 
+    // Automatically infer target portal URL if not explicitly provided
+    let targetUrlToUse = customTargetUrl;
+    if (!targetUrlToUse || !targetUrlToUse.startsWith("http")) {
+      if (/amazon/i.test(taskGoal)) {
+        const prodMatch = taskGoal.match(/(?:track|watch|buy|price\s*of|search\s*for)\s+([a-z0-9\s\-]+?)(?:\s+on\s+amazon|\s+when\s+price|\s+under|\s+below|,|$)/i);
+        const query = prodMatch ? prodMatch[1].trim() : "";
+        if (query && query.length > 2) {
+          targetUrlToUse = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
+        } else {
+          targetUrlToUse = "https://www.amazon.in";
+        }
+      } else if (/flipkart/i.test(taskGoal)) {
+        const prodMatch = taskGoal.match(/(?:track|watch|buy|price\s*of|search\s*for)\s+([a-z0-9\s\-]+?)(?:\s+on\s+flipkart|\s+when\s+price|\s+under|\s+below|,|$)/i);
+        const query = prodMatch ? prodMatch[1].trim() : "";
+        if (query && query.length > 2) {
+          targetUrlToUse = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
+        } else {
+          targetUrlToUse = "https://www.flipkart.com";
+        }
+      } else if (/cesc/i.test(taskGoal)) {
+        targetUrlToUse = "https://www.cesc.co.in";
+      } else if (/airtel/i.test(taskGoal)) {
+        targetUrlToUse = "https://www.airtel.in";
+      } else if (/jio/i.test(taskGoal)) {
+        targetUrlToUse = "https://www.jio.com";
+      } else {
+        const urlMatch = taskGoal.match(/https?:\/\/[^\s"',]+/i) || taskGoal.match(/\b([a-zA-Z0-9-]+\.(?:com|in|co\.in|org|net|gov|io))\b/i);
+        if (urlMatch) {
+          targetUrlToUse = urlMatch[0].startsWith("http") ? urlMatch[0] : `https://${urlMatch[0]}`;
+        }
+      }
+    }
+
     try {
-      const tabId = await openAndPrepareTab(customTargetUrl);
+      const tabId = await openAndPrepareTab(targetUrlToUse);
       executionTabIdRef.current = tabId;
 
       setLogs((prev) => [...prev, `Navigated to target portal. Initializing autonomous agent...`]);
