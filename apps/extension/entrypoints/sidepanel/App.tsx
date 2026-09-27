@@ -2238,11 +2238,27 @@ export function App() {
         if (!numMatch && category !== "GENERAL" && category !== "COMMERCE_WATCH") missing.push("consumerNumber");
         if (!providerName && !portalUrl) missing.push("providerName");
 
+        let extractedProduct = "";
+        if (category === "COMMERCE_WATCH") {
+          const cleanRaw = raw
+            .replace(/track|watch|monitor|buy|purchase|auto buy|when price drops?|below|under|drops?\s+to|target|reach(?:es)?|currently|current\s+price|now\s+at|(?:₹|rs\.?|\$)\s*[\d,]+|\(.*?\)/gi, " ")
+            .replace(/on\s+(?:amazon(?:\.in)?|flipkart(?:\.com)?|myntra(?:\.com)?|meesho|ajio)/gi, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (cleanRaw.length >= 2) {
+            extractedProduct = cleanRaw;
+          }
+        }
+
+        const targetPriceStr = priceCondition?.targetPrice ? `₹${priceCondition.targetPrice.toLocaleString("en-IN")}` : "target price";
+        const prodLabel = extractedProduct || "requested product";
+
         const title = category === "COMMERCE_WATCH"
-          ? `Watch Price: ${providerName || "Product"}${priceCondition?.targetPrice ? ` (Under ₹${priceCondition.targetPrice.toLocaleString("en-IN")})` : ""}`
+          ? `Watch Price: ${extractedProduct || providerName || "Product"}${priceCondition?.targetPrice ? ` (Under ₹${priceCondition.targetPrice.toLocaleString("en-IN")})` : ""}`
           : (providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw));
+
         const formattedGoal = category === "COMMERCE_WATCH"
-          ? `Monitor product price on ${providerName || "store"}. When price drops below ${priceCondition?.targetPrice ? `₹${priceCondition.targetPrice}` : "target"}, add item to cart and pause at checkout for 1-click human confirmation.`
+          ? `Commerce Price Watch for exact item "${prodLabel}". Search/navigate on ${providerName || "store"} for exact model "${prodLabel}". Locate the matching product link and click to open its product page. Check the live price: if current price is <= ${targetPriceStr}, add item to cart, proceed toward checkout, and pause for user approval. If current price is > ${targetPriceStr}, DO NOT add to cart and report the live price.`
           : `Autonomously navigate to ${portalUrl || "the bill payment portal"}, locate billing account field, verify bill details, and pause for human confirmation before payment.`;
 
         draft = {
@@ -2709,9 +2725,7 @@ export function App() {
       ) {
         const cond = task.priceCondition || task.billerInfo?.priceCondition;
         const targetPriceStr = cond?.targetPrice ? `under ₹${cond.targetPrice.toLocaleString("en-IN")}` : "target threshold";
-        formulatedGoal = `Commerce Price Watch: Navigate to ${targetUrl || "product page"}, check current product price. If price drops to ${targetPriceStr}, add item to cart, apply shipping details with User Profile: [${parts.join(
-          ", "
-        )}], proceed to checkout, and PAUSE at final payment screen for human confirmation.`;
+        formulatedGoal = `Commerce Price Watch for "${task.title}": Navigate to ${targetUrl || "product page"}, search or locate the exact matching model for "${task.title}". Click into the matching product page and check the live price. If price is <= ${targetPriceStr}, add item to cart, proceed to checkout, and PAUSE at final payment screen for human approval. If price is > ${targetPriceStr}, DO NOT add to cart and report the live price.`;
       } else if (
         !task.billerInfo ||
         task.billerInfo.billType === "GENERAL" ||
