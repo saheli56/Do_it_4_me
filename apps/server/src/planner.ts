@@ -101,21 +101,27 @@ Respond with a SINGLE VALID JSON object in this exact schema:
 `;
 
 export function normalizeExtractedUrl(rawUrl?: string, textContext = ""): string | undefined {
-  const combined = ((rawUrl || "") + " " + textContext).toLowerCase();
-  if (combined.includes("cesc")) {
-    return "https://www.cesc.co.in";
+  if (rawUrl && rawUrl.trim()) {
+    let url = rawUrl.trim().replace(/[\.,;:)]+$/, "");
+    url = url.replace(/cesc\.(con|coin|co\b)/i, "cesc.co.in");
+    url = url.replace(/\.(con)\b/i, ".com");
+    url = url.replace(/\.coin\b/i, ".co.in");
+    
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      url = `https://${url}`;
+    }
+    return url;
   }
 
-  if (!rawUrl) return undefined;
-  let url = rawUrl.trim().replace(/[\.,;:)]+$/, "");
-  url = url.replace(/cesc\.(con|coin|co\b)/i, "cesc.co.in");
-  url = url.replace(/\.(con)\b/i, ".com");
-  url = url.replace(/\.coin\b/i, ".co.in");
-  
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = `https://${url}`;
+  if (textContext) {
+    if (/\bcesc\b/i.test(textContext)) return "https://www.cesc.co.in";
+    if (/\bairtel\b/i.test(textContext)) return "https://www.airtel.in";
+    if (/\bamazon\b/i.test(textContext)) return "https://www.amazon.in";
+    if (/\bflipkart\b/i.test(textContext)) return "https://www.flipkart.com";
+    if (/\bjio\b/i.test(textContext)) return "https://www.jio.com";
   }
-  return url;
+
+  return undefined;
 }
 
 export class PlannerService {

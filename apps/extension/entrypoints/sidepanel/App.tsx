@@ -600,41 +600,10 @@ export function App() {
       const cached = localStorage.getItem("difm_saved_rough_notes");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {}
-    return [
-      {
-        id: "note-sample-1",
-        rawText: "CESC electric bill around 1450 due before oct 15, pay on 5th every month",
-        createdAt: Date.now() - 3600000,
-        status: "NEEDS_CLARIFICATION",
-        parsedDraft: {
-          formattedGoal:
-            "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
-          title: "Pay CESC Electricity Bill",
-          category: "ELECTRICITY",
-          billingCycle: "MONTHLY",
-          dueAmount: "₹1,450",
-          dueDate: "2026-10-15",
-          providerName: "CESC Electricity",
-          targetUrl: "https://www.cesc.co.in",
-          schedule: {
-            enabled: true,
-            frequency: "MONTHLY",
-            time: "09:30",
-            dayOfMonth: 5,
-            autoExecute: false
-          },
-          missingFields: ["consumerNumber"],
-          clarificationPrompt:
-            "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
-          requiresHumanApproval: true,
-          safetySummary:
-            "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
-        }
-      }
-    ];
+    return [];
   });
   const [noteInput, setNoteInput] = useState<string>(() => {
     try {
@@ -644,7 +613,7 @@ export function App() {
         if (parsed[0]?.rawText) return parsed[0].rawText;
       }
     } catch {}
-    return "CESC electric bill around 1450 due before oct 15, pay on 5th every month";
+    return "";
   });
   const [activeNoteId, setActiveNoteId] = useState<string | null>(() => {
     try {
@@ -654,7 +623,7 @@ export function App() {
         if (parsed[0]?.id) return parsed[0].id;
       }
     } catch {}
-    return "note-sample-1";
+    return null;
   });
   const [isNoteAnalyzing, setIsNoteAnalyzing] = useState(false);
   const [activeNoteDraft, setActiveNoteDraft] = useState<RawNoteItem["parsedDraft"] | null>(() => {
@@ -665,30 +634,7 @@ export function App() {
         if (parsed[0]?.parsedDraft) return parsed[0].parsedDraft;
       }
     } catch {}
-    return {
-      formattedGoal:
-        "Autonomously navigate to CESC electricity portal, locate consumer billing account, verify amount ₹1,450, and pause for human confirmation before payment.",
-      title: "Pay CESC Electricity Bill",
-      category: "ELECTRICITY",
-      billingCycle: "MONTHLY",
-      dueAmount: "₹1,450",
-      dueDate: "2026-10-15",
-      providerName: "CESC Electricity",
-      targetUrl: "https://www.cesc.co.in",
-      schedule: {
-        enabled: true,
-        frequency: "MONTHLY",
-        time: "09:30",
-        dayOfMonth: 5,
-        autoExecute: false
-      },
-      missingFields: ["consumerNumber"],
-      clarificationPrompt:
-        "What is your CESC Consumer ID or Account Number to complete this scheduled task?",
-      requiresHumanApproval: true,
-      safetySummary:
-        "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
-    };
+    return null;
   });
   const [attachedTabNotice, setAttachedTabNotice] = useState<string | null>(null);
   const [isUrlAttachOpen, setIsUrlAttachOpen] = useState(false);
@@ -2460,9 +2406,9 @@ export function App() {
 
     setIsNoteAnalyzing(true);
     try {
-      let draftToUse = activeNoteDraft;
-      if (!draftToUse) {
-        draftToUse = await handleAnalyzeRawNote(fullText);
+      let draftToUse = await handleAnalyzeRawNote(fullText, false);
+      if (!draftToUse && activeNoteDraft) {
+        draftToUse = activeNoteDraft;
       }
 
       if (draftToUse && finalUrl) {
