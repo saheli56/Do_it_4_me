@@ -256,17 +256,28 @@ export async function executeAgentAction(
       }
 
       case "SCROLL": {
-        const amount = action.amount || 400;
-        if (action.direction === "DOWN") {
-          window.scrollBy({ top: amount, behavior: "smooth" });
-        } else if (action.direction === "UP") {
-          window.scrollBy({ top: -amount, behavior: "smooth" });
-        } else if (action.direction === "TOP") {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        } else if (action.direction === "BOTTOM") {
-          window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-        }
-        await new Promise((r) => setTimeout(r, 400));
+        const amount = action.amount || 600;
+        const dir = (action.direction || "DOWN").toUpperCase();
+        try {
+          const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
+          const root = doc.scrollingElement || doc.documentElement || doc.body;
+
+          if (dir === "DOWN") {
+            if (win && typeof win.scrollBy === "function") win.scrollBy({ top: amount, left: 0, behavior: "instant" as ScrollBehavior });
+            if (root) root.scrollTop += amount;
+          } else if (dir === "UP") {
+            if (win && typeof win.scrollBy === "function") win.scrollBy({ top: -amount, left: 0, behavior: "instant" as ScrollBehavior });
+            if (root) root.scrollTop -= amount;
+          } else if (dir === "TOP") {
+            if (win && typeof win.scrollTo === "function") win.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+            if (root) root.scrollTop = 0;
+          } else if (dir === "BOTTOM") {
+            const bottom = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0);
+            if (win && typeof win.scrollTo === "function") win.scrollTo({ top: bottom, left: 0, behavior: "instant" as ScrollBehavior });
+            if (root) root.scrollTop = bottom;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 300));
         return { success: true };
       }
 

@@ -357,34 +357,52 @@ export function detectSecurityChallenge(doc: Document = typeof document !== "und
   return undefined;
 }
 
-export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 120, maxChars = 10000): string {
+export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 140, maxChars = 11000): string {
   if (!nodes || nodes.length === 0) {
     return "No interactive elements detected on page.";
   }
 
-  // Prioritize controls, inputs, buttons, and relevant interactive elements first
-  const prioritized = [...nodes].sort((a, b) => {
-    const isControlA = ["textbox", "button", "combobox", "checkbox", "radio", "searchbox"].includes(a.role);
-    const isControlB = ["textbox", "button", "combobox", "checkbox", "radio", "searchbox"].includes(b.role);
-    if (isControlA && !isControlB) return -1;
-    if (!isControlA && isControlB) return 1;
+  // Segment elements so product/content links aren't starved out by 100+ sidebar filter checkboxes
+  const inputs: SemanticNode[] = [];
+  const buttons: SemanticNode[] = [];
+  const contentLinks: SemanticNode[] = [];
+  const otherControls: SemanticNode[] = [];
 
-    const hasNameA = Boolean(a.name || a.placeholder || a.value);
-    const hasNameB = Boolean(b.name || b.placeholder || b.value);
-    if (hasNameA && !hasNameB) return -1;
-    if (!hasNameA && hasNameB) return 1;
+  for (const n of nodes) {
+    const role = (n.role || "").toLowerCase();
+    const name = (n.name || "").trim();
 
-    return 0;
-  });
+    if (role === "textbox" || role === "searchbox" || role === "combobox") {
+      inputs.push(n);
+    } else if (role === "button" || role === "summary") {
+      buttons.push(n);
+    } else if (role === "link") {
+      // Descriptive links (e.g. product titles, search items, category pages)
+      if (name.length > 5 || n.href) {
+        contentLinks.push(n);
+      } else {
+        otherControls.push(n);
+      }
+    } else {
+      otherControls.push(n);
+    }
+  }
 
-  const selectedNodes = prioritized.slice(0, maxNodes);
+  // Allocate slots fairly
+  const selectedNodes: SemanticNode[] = [
+    ...inputs.slice(0, 25),
+    ...buttons.slice(0, 35),
+    ...contentLinks.slice(0, 65),
+    ...otherControls.slice(0, 20)
+  ];
+
   const lines: string[] = [];
   let totalLen = 0;
 
   for (const n of selectedNodes) {
     let desc = `[${n.id}] ${n.role.toUpperCase()}`;
     if (n.name) {
-      const cleanName = n.name.length > 80 ? n.name.slice(0, 77) + "..." : n.name;
+      const cleanName = n.name.length > 90 ? n.name.slice(0, 87) + "..." : n.name;
       desc += ` "${cleanName}"`;
     }
     if (n.value) {
@@ -396,7 +414,7 @@ export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 12
       desc += ` (placeholder: "${cleanPl}")`;
     }
     if (n.href) {
-      const cleanHref = n.href.length > 90 ? n.href.slice(0, 87) + "..." : n.href;
+      const cleanHref = n.href.length > 100 ? n.href.slice(0, 97) + "..." : n.href;
       desc += ` (href: "${cleanHref}")`;
     }
     if (n.checked !== undefined) desc += ` [checked=${n.checked}]`;
