@@ -69,7 +69,9 @@ import {
   FloppyDiskIcon,
   FileTextIcon,
   GlobeIcon,
-  DeviceMobileIcon
+  DeviceMobileIcon,
+  ShoppingCartSimpleIcon,
+  CurrencyInrIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -535,6 +537,7 @@ export interface RawNoteItem {
     clarificationPrompt?: string;
     requiresHumanApproval: boolean;
     safetySummary: string;
+    priceCondition?: import("@difm/shared").PriceCondition;
   };
 }
 
@@ -717,6 +720,7 @@ export function App() {
     clarificationPrompt?: string;
     requiresHumanApproval: boolean;
     safetySummary: string;
+    priceCondition?: import("@difm/shared").PriceCondition;
   } | null>(null);
 
   // Profile Editor Form State
@@ -2152,8 +2156,46 @@ export function App() {
         let category: TaskCategory = "GENERAL";
         let providerName: string | undefined = undefined;
         let portalUrl = currentTabUrl || "";
+        let priceCondition: import("@difm/shared").PriceCondition | undefined = undefined;
 
-        if (/cesc/i.test(raw)) {
+        const isCommerce =
+          /amazon|flipkart|myntra|meesho|ajio|croma|price\s*drop|track\s*price|when\s*price|below\s*(?:₹|rs\.?|\$)?\s*\d+|under\s*(?:₹|rs\.?|\$)?\s*\d+/i.test(
+            raw
+          ) || (portalUrl && /amazon\.|flipkart\.|myntra\.|meesho\.|ajio\./i.test(portalUrl));
+
+        if (isCommerce) {
+          category = "COMMERCE_WATCH";
+          if (/amazon/i.test(raw) || /amazon\./i.test(portalUrl)) {
+            providerName = "Amazon";
+            if (!portalUrl) portalUrl = "https://www.amazon.in";
+          } else if (/flipkart/i.test(raw) || /flipkart\./i.test(portalUrl)) {
+            providerName = "Flipkart";
+            if (!portalUrl) portalUrl = "https://www.flipkart.com";
+          } else if (/myntra/i.test(raw) || /myntra\./i.test(portalUrl)) {
+            providerName = "Myntra";
+            if (!portalUrl) portalUrl = "https://www.myntra.com";
+          } else {
+            providerName = "Shopping Store";
+          }
+
+          const targetMatch =
+            raw.match(/(?:below|under|drops?\s+to|target|reach(?:es)?)\s*(?:rs\.?|inr|₹|\$)?\s*([\d,]+)/i) ||
+            raw.match(/(?:rs\.?|inr|₹|\$)\s*([\d,]+)\s*(?:or\s+(?:below|less)|target)/i);
+          const currentMatch = raw.match(/(?:currently|current\s+price|now\s+at)\s*(?:rs\.?|inr|₹|\$)?\s*([\d,]+)/i);
+
+          const targetPrice = targetMatch ? parseFloat(targetMatch[1].replace(/,/g, "")) : undefined;
+          const currentPrice = currentMatch ? parseFloat(currentMatch[1].replace(/,/g, "")) : undefined;
+
+          priceCondition = {
+            targetPrice,
+            currentPrice,
+            currency: "INR",
+            checkIntervalMinutes: 30,
+            autoAddToCart: true,
+            autoProceedToCheckout: true,
+            priceMatched: false
+          };
+        } else if (/cesc/i.test(raw)) {
           category = "ELECTRICITY";
           providerName = "CESC Electricity";
           portalUrl = "https://www.cesc.co.in";
@@ -2193,25 +2235,30 @@ export function App() {
         const dateMatch = raw.match(/(?:by|before|on|due)?\s*((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{0,4}))/i);
 
         const missing: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate"> = [];
-        if (!numMatch && category !== "GENERAL") missing.push("consumerNumber");
+        if (!numMatch && category !== "GENERAL" && category !== "COMMERCE_WATCH" && category !== "SHOPPING") missing.push("consumerNumber");
         if (!providerName && !portalUrl) missing.push("providerName");
 
-        const title = providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw);
-        const formattedGoal = `Autonomously navigate to ${portalUrl || "the bill payment portal"}, locate billing account field, verify bill details, and pause for human confirmation before payment.`;
+        const title = category === "COMMERCE_WATCH"
+          ? `Watch Price: ${providerName || "Product"}${priceCondition?.targetPrice ? ` (Under ₹${priceCondition.targetPrice.toLocaleString("en-IN")})` : ""}`
+          : (providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw));
+        const formattedGoal = category === "COMMERCE_WATCH"
+          ? `Monitor product price on ${providerName || "store"}. When price drops below ${priceCondition?.targetPrice ? `₹${priceCondition.targetPrice}` : "target"}, add item to cart and pause at checkout for 1-click human confirmation.`
+          : `Autonomously navigate to ${portalUrl || "the bill payment portal"}, locate billing account field, verify bill details, and pause for human confirmation before payment.`;
 
         draft = {
           formattedGoal,
           title,
           category,
-          billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : "MONTHLY",
+          billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : (category === "COMMERCE_WATCH" ? "ONE_TIME" : "MONTHLY"),
           dueDate: dateMatch ? dateMatch[1] : undefined,
-          dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
+          dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : (priceCondition?.targetPrice ? `₹${priceCondition.targetPrice.toLocaleString("en-IN")}` : undefined),
           consumerNumber: numMatch ? numMatch[1] : undefined,
           providerName,
           targetUrl: portalUrl || undefined,
+          priceCondition,
           schedule: {
-            enabled: /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
-            frequency: "MONTHLY",
+            enabled: category === "COMMERCE_WATCH" ? true : /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
+            frequency: category === "COMMERCE_WATCH" ? "DAILY" : "MONTHLY",
             time: "09:30",
             dayOfMonth: 5,
             autoExecute: false
@@ -2445,7 +2492,8 @@ export function App() {
             customerName: customerFullName || undefined,
             phoneNumber: currentActiveProfile?.phone || undefined,
             emailAddress: currentActiveProfile?.email || undefined,
-            additionalInstructions: draftToUse.formattedGoal
+            additionalInstructions: draftToUse.formattedGoal,
+            priceCondition: draftToUse.priceCondition
           }
         : undefined;
 
@@ -2461,7 +2509,8 @@ export function App() {
             notes: draftToUse?.formattedGoal || fullText,
             targetUrl: draftToUse?.targetUrl || finalUrl || tab?.url || undefined,
             schedule: draftToUse?.schedule || { enabled: true, frequency: "MONTHLY", time: "09:30", dayOfMonth: 5, autoExecute: false },
-            billerInfo
+            billerInfo,
+            priceCondition: draftToUse?.priceCondition
           })
         });
         fetchPendingTasks();
@@ -2500,7 +2549,8 @@ export function App() {
         customerName: customerFullName || undefined,
         phoneNumber: currentActiveProfile?.phone || undefined,
         emailAddress: currentActiveProfile?.email || undefined,
-        additionalInstructions: activeNoteDraft.formattedGoal
+        additionalInstructions: activeNoteDraft.formattedGoal,
+        priceCondition: activeNoteDraft.priceCondition
       };
 
       const res = await fetch("http://127.0.0.1:3001/pending-tasks", {
@@ -2514,7 +2564,8 @@ export function App() {
           notes: activeNoteDraft.formattedGoal,
           targetUrl: activeNoteDraft.targetUrl || tab?.url || undefined,
           schedule: activeNoteDraft.schedule,
-          billerInfo
+          billerInfo,
+          priceCondition: activeNoteDraft.priceCondition
         })
       });
 
@@ -2565,9 +2616,26 @@ export function App() {
 
   const handleSelectNote = (note: RawNoteItem) => {
     setActiveNoteId(note.id);
-    setNoteInput(note.rawText);
-    setCustomPortalUrl(note.parsedDraft?.targetUrl || "");
+    let cleanText = note.rawText;
+    let extractedUrl = note.parsedDraft?.targetUrl || "";
+    const portalMatch = cleanText.match(/\s*\(Portal:\s*([^\)]+)\)/i);
+    if (portalMatch) {
+      if (!extractedUrl) extractedUrl = portalMatch[1].trim();
+      cleanText = cleanText.replace(portalMatch[0], "").trim();
+    }
+    setNoteInput(cleanText);
+    setCustomPortalUrl(extractedUrl);
     setActiveNoteDraft(note.parsedDraft || null);
+
+    // Focus editor and scroll smoothly to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => {
+      const el = document.getElementById("smart-note-textarea");
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
   };
 
   const handleExecutePendingTask = async (task: PendingTaskItem) => {
@@ -2634,6 +2702,17 @@ export function App() {
       if (task.notes) parts.push(`Notes: ${task.notes}`);
 
       if (
+        task.category === "COMMERCE_WATCH" ||
+        task.billerInfo?.billType === "COMMERCE_WATCH" ||
+        task.priceCondition ||
+        task.billerInfo?.priceCondition
+      ) {
+        const cond = task.priceCondition || task.billerInfo?.priceCondition;
+        const targetPriceStr = cond?.targetPrice ? `under ₹${cond.targetPrice.toLocaleString("en-IN")}` : "target threshold";
+        formulatedGoal = `Commerce Price Watch: Navigate to ${targetUrl || "product page"}, check current product price. If price drops to ${targetPriceStr}, add item to cart, apply shipping details with User Profile: [${parts.join(
+          ", "
+        )}], proceed to checkout, and PAUSE at final payment screen for human confirmation.`;
+      } else if (
         !task.billerInfo ||
         task.billerInfo.billType === "GENERAL" ||
         task.billerInfo.billType === "FORM_FILL" ||
@@ -3558,26 +3637,35 @@ export function App() {
                 </div>
                 <div>
                   <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
-                    Smart Notes & Raw Tasks
+                    {activeNoteId ? "Editing Note" : "Smart Notes & Raw Tasks"}
+                    {activeNoteId && (
+                      <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                        Active
+                      </span>
+                    )}
                   </h3>
                   <p class="text-[10px] text-zinc-400">
-                    Jot down raw thoughts or messy bills — AI parses, clarifies, and schedules
+                    {activeNoteId
+                      ? "Modify your message, URL, or schedule parameters below and click Save & Run"
+                      : "Jot down raw thoughts or messy bills — AI parses, clarifies, and schedules"}
                   </p>
                 </div>
               </div>
 
               {activeNoteId && (
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveNoteId(null);
                     setActiveNoteDraft(null);
                     setNoteInput("");
+                    setCustomPortalUrl("");
                   }}
-                  class="text-[10px] px-2 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition flex items-center gap-1"
+                  class="text-[10px] px-2 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition flex items-center gap-1 active:scale-95"
                   title="Start a fresh note"
                 >
                   <PlusIcon size={11} />
-                  <span>New Note</span>
+                  <span>+ New Note</span>
                 </button>
               )}
             </div>
@@ -3632,6 +3720,7 @@ export function App() {
             {/* Raw Text Input Area */}
             <div class="relative">
               <textarea
+                id="smart-note-textarea"
                 rows={3}
                 value={noteInput}
                 onInput={(e) => setNoteInput((e.target as HTMLTextAreaElement).value)}
@@ -3922,6 +4011,141 @@ export function App() {
                     />
                   </div>
                 </div>
+
+                {/* Commerce Price Watch Condition Controls */}
+                {(activeNoteDraft.category === "COMMERCE_WATCH" || activeNoteDraft.priceCondition) && (
+                  <div class="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-emerald-200 space-y-2.5 animate-slide-down">
+                    <div class="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
+                      <div class="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
+                        <ShoppingCartSimpleIcon size={14} class="text-emerald-400" />
+                        <span>Price Drop & Auto-Checkout Engine</span>
+                      </div>
+                      <span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 font-mono text-emerald-300">
+                        Auto-Trigger
+                      </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="block text-[10px] font-semibold text-emerald-300 mb-1">
+                          Target Alert Price (₹) <span class="text-emerald-400">*</span>
+                        </label>
+                        <div class="relative">
+                          <span class="absolute left-2.5 top-1.5 text-xs text-emerald-400 font-mono font-bold">₹</span>
+                          <input
+                            type="number"
+                            value={activeNoteDraft.priceCondition?.targetPrice || ""}
+                            placeholder="e.g. 19999"
+                            onInput={(e) => {
+                              const val = parseFloat((e.target as HTMLInputElement).value);
+                              const updatedCond = {
+                                ...(activeNoteDraft.priceCondition || {
+                                  currency: "INR",
+                                  checkIntervalMinutes: 30,
+                                  autoAddToCart: true,
+                                  autoProceedToCheckout: true,
+                                  priceMatched: false
+                                }),
+                                targetPrice: isNaN(val) ? undefined : val
+                              };
+                              handleUpdateNoteDraftField("priceCondition", updatedCond);
+                              if (!isNaN(val)) {
+                                handleUpdateNoteDraftField("dueAmount", `₹${val.toLocaleString("en-IN")}`);
+                              }
+                            }}
+                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-emerald-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label class="block text-[10px] font-semibold text-zinc-400 mb-1">
+                          Current Price (₹)
+                        </label>
+                        <div class="relative">
+                          <span class="absolute left-2.5 top-1.5 text-xs text-zinc-500 font-mono">₹</span>
+                          <input
+                            type="number"
+                            value={activeNoteDraft.priceCondition?.currentPrice || ""}
+                            placeholder="e.g. 24999"
+                            onInput={(e) => {
+                              const val = parseFloat((e.target as HTMLInputElement).value);
+                              const updatedCond = {
+                                ...(activeNoteDraft.priceCondition || {
+                                  currency: "INR",
+                                  checkIntervalMinutes: 30,
+                                  autoAddToCart: true,
+                                  autoProceedToCheckout: true,
+                                  priceMatched: false
+                                }),
+                                currentPrice: isNaN(val) ? undefined : val
+                              };
+                              handleUpdateNoteDraftField("priceCondition", updatedCond);
+                            }}
+                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Commerce Automation Toggles */}
+                    <div class="space-y-1.5 pt-1 border-t border-emerald-500/15">
+                      <label class="flex items-center justify-between text-[11px] text-zinc-200 cursor-pointer">
+                        <span class="flex items-center gap-1.5">
+                          <CheckCircleIcon size={12} class="text-emerald-400" />
+                          <span>Auto-add product to cart when target reached</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={activeNoteDraft.priceCondition?.autoAddToCart !== false}
+                          onChange={(e) => {
+                            const updatedCond = {
+                              ...(activeNoteDraft.priceCondition || {
+                                currency: "INR",
+                                checkIntervalMinutes: 30,
+                                autoAddToCart: true,
+                                autoProceedToCheckout: true,
+                                priceMatched: false
+                              }),
+                              autoAddToCart: (e.target as HTMLInputElement).checked
+                            };
+                            handleUpdateNoteDraftField("priceCondition", updatedCond);
+                          }}
+                          class="rounded bg-zinc-900 border-zinc-700 accent-emerald-500 cursor-pointer"
+                        />
+                      </label>
+
+                      <label class="flex items-center justify-between text-[11px] text-zinc-200 cursor-pointer">
+                        <span class="flex items-center gap-1.5">
+                          <ShieldCheckIcon size={12} class="text-amber-400" />
+                          <span>Proceed to checkout & pause for 1-click confirmation</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={activeNoteDraft.priceCondition?.autoProceedToCheckout !== false}
+                          onChange={(e) => {
+                            const updatedCond = {
+                              ...(activeNoteDraft.priceCondition || {
+                                currency: "INR",
+                                checkIntervalMinutes: 30,
+                                autoAddToCart: true,
+                                autoProceedToCheckout: true,
+                                priceMatched: false
+                              }),
+                              autoProceedToCheckout: (e.target as HTMLInputElement).checked
+                            };
+                            handleUpdateNoteDraftField("priceCondition", updatedCond);
+                          }}
+                          class="rounded bg-zinc-900 border-zinc-700 accent-emerald-500 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+
+                    <div class="text-[10px] text-emerald-300/80 bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/20 leading-relaxed">
+                      Agent monitors product price in background. When target is reached, it adds item to cart and brings you directly to the 1-click payment screen.
+                    </div>
+                  </div>
+                )}
 
                 {/* Formatted Goal */}
                 <div>
@@ -4478,6 +4702,7 @@ export function App() {
                           <option value="MOBILE">Mobile</option>
                           <option value="CREDIT_CARD">Credit Card</option>
                           <option value="SHOPPING">Shopping</option>
+                          <option value="COMMERCE_WATCH">Commerce Price Watch</option>
                           <option value="OTHER">Other</option>
                         </select>
                       </div>
@@ -4886,6 +5111,60 @@ export function App() {
                     </div>
                   )}
 
+                  {/* Commerce Price Watch Status Banner */}
+                  {(t.category === "COMMERCE_WATCH" || t.priceCondition || t.billerInfo?.priceCondition) && (() => {
+                    const cond = t.priceCondition || t.billerInfo?.priceCondition;
+                    const targetPriceStr = cond?.targetPrice ? `≤ ₹${cond.targetPrice.toLocaleString("en-IN")}` : "Set target";
+                    const currentPriceStr = cond?.currentPrice ? `₹${cond.currentPrice.toLocaleString("en-IN")}` : "Live Scan";
+                    const isTriggered = cond?.priceMatched || (cond?.targetPrice && cond?.currentPrice && cond.currentPrice <= cond.targetPrice);
+
+                    return (
+                      <div class="bg-gradient-to-r from-emerald-950/40 via-zinc-950/60 to-emerald-950/30 border border-emerald-500/30 rounded-lg p-2.5 mb-2 text-[11px] space-y-1.5 shadow-sm">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center gap-1.5 font-semibold text-emerald-300 text-xs">
+                            <ShoppingCartSimpleIcon size={13} class="text-emerald-400" />
+                            <span>Price Drop Watcher</span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          </div>
+                          <span class={`text-[9px] px-2 py-0.5 rounded-full font-mono font-medium border ${
+                            isTriggered
+                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-400 animate-bounce"
+                              : "bg-white/[0.05] text-zinc-300 border-white/[0.1]"
+                          }`}>
+                            {isTriggered ? "Target Reached!" : `Every ${cond?.checkIntervalMinutes || 30}m`}
+                          </span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-[10px]">
+                          <div class="p-1.5 rounded bg-black/40 border border-emerald-500/20">
+                            <span class="text-zinc-400 block text-[9px]">Target Price</span>
+                            <strong class="text-emerald-300 font-mono text-xs">{targetPriceStr}</strong>
+                          </div>
+                          <div class="p-1.5 rounded bg-black/40 border border-white/[0.06]">
+                            <span class="text-zinc-400 block text-[9px]">Current / Detected</span>
+                            <strong class="text-zinc-200 font-mono text-xs">{currentPriceStr}</strong>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-1 border-t border-emerald-500/20 text-[10px]">
+                          <div class="flex items-center gap-1 text-zinc-400">
+                            <ShieldCheckIcon size={11} class="text-amber-400" />
+                            <span>Auto-cart & pause for payment</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleExecutePendingTask(t)}
+                            class="text-[10px] text-emerald-300 hover:text-emerald-200 font-semibold px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 transition flex items-center gap-1 active:scale-95"
+                          >
+                            <PlayIcon size={9} class="fill-current" />
+                            <span>Check Now</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Notes Block */}
                   <div class="bg-zinc-950/40 border border-white/[0.04] rounded-lg p-2 text-xs mb-1.5">
                     <div class="flex items-center justify-between mb-0.5">
@@ -5062,6 +5341,7 @@ export function App() {
                     <option value="MOBILE">Mobile</option>
                     <option value="CREDIT_CARD">Credit Card</option>
                     <option value="SHOPPING">Shopping</option>
+                    <option value="COMMERCE_WATCH">Commerce Price Watch</option>
                     <option value="OTHER">Other</option>
                   </select>
                 </div>
@@ -6581,13 +6861,13 @@ export function App() {
                       <option value="ELECTRICITY">Electricity</option>
                       <option value="WATER">Water</option>
                       <option value="GAS">Gas</option>
-                      <option value="BROADBAND">Broadband</option>
+                      <option value="INTERNET">Internet</option>
                       <option value="MOBILE">Mobile</option>
                       <option value="CREDIT_CARD">Credit Card</option>
-                      <option value="INSURANCE">Insurance</option>
-                      <option value="RENT">Rent</option>
-                      <option value="SUBSCRIPTION">Subscription</option>
-                      <option value="TAX">Tax</option>
+                      <option value="SHOPPING">Shopping</option>
+                      <option value="COMMERCE_WATCH">Commerce Price Watch</option>
+                      <option value="FORM_FILL">Form Fill</option>
+                      <option value="GENERAL">General</option>
                       <option value="OTHER">Other</option>
                     </select>
                   </div>

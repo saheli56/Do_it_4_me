@@ -838,4 +838,37 @@ export function FileArrowUpIcon({ size = 16, class: className = "", ...props }: 
   );
 }
 
+export function ShoppingCartSimpleIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M96,216a16,16,0,1,1-16-16A16,16,0,0,1,96,216Zm88-16a16,16,0,1,0,16,16A16,16,0,0,0,184,200ZM230.16,69.53A8,8,0,0,0,224,64H55.44L46.86,22.84A8,8,0,0,0,39,16H16a8,8,0,0,0,0,16H32.48l30.8,147.84A24,24,0,0,0,86.72,200H200a8,8,0,0,0,0-16H86.72a8,8,0,0,1-7.81-6.37L75.64,160H200a24,24,0,0,0,23.36-18.42l16-64A8,8,0,0,0,230.16,69.53ZM207.24,141.58A8,8,0,0,1,200,144H72.31L58.78,80H217.65Z" />
+    </svg>
+  );
+}
+
+export function CurrencyInrIcon({ size = 16, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      fill="currentColor"
+      viewBox="0 0 256 256"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <path d="M200,80a8,8,0,0,1-8,8H151.78a56.12,56.12,0,0,1-54.7,48H120a8,8,0,0,1,6.4,3.2l64,80a8,8,0,1,1-12.8,9.6L116.45,152H88a8,8,0,0,1-8-8V136a8,8,0,0,1,8-8H97.08a56.12,56.12,0,0,1,54.7-40H88a8,8,0,0,1,0-16h104A8,8,0,0,1,200,80ZM88,56h104a8,8,0,0,0,0-16H88a8,8,0,0,0,0,16Z" />
+    </svg>
+  );
+}
+
+
 

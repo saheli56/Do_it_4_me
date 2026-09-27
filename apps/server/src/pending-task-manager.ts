@@ -82,6 +82,7 @@ export class PendingTaskManager {
       requiresSensitiveApproval: true,
       notes: input.notes,
       billerInfo: input.billerInfo,
+      priceCondition: input.priceCondition || input.billerInfo?.priceCondition,
       createdAt: Date.now()
     };
 
@@ -172,6 +173,7 @@ export class PendingTaskManager {
     if (updates.targetUrl !== undefined) task.targetUrl = updates.targetUrl ?? undefined;
     if (updates.notes !== undefined) task.notes = updates.notes ?? undefined;
     if (updates.billerInfo !== undefined) task.billerInfo = updates.billerInfo ?? undefined;
+    if (updates.priceCondition !== undefined) task.priceCondition = updates.priceCondition ?? undefined;
     if (updates.status !== undefined) {
       task.status = updates.status;
       if (updates.status === "COMPLETED") {

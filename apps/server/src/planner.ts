@@ -520,6 +520,7 @@ Respond with ONLY a valid JSON object matching this structure:
     clarificationPrompt?: string;
     requiresHumanApproval: boolean;
     safetySummary: string;
+    priceCondition?: import("@difm/shared").PriceCondition;
   }> {
     const prompt = `
 You are the AI Task Architect for "Do It For Me" (DIFM).
@@ -532,38 +533,56 @@ User Active Profile: ${JSON.stringify(params.userProfile || {})}
 Your job:
 1. Clean and format this into a clear, professional, step-by-step agent goal ("formattedGoal").
 2. Create a concise task title ("title", max 50 chars).
-3. Detect category from ["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "SHOPPING", "FORM_FILL", "GENERAL"].
-4. Detect billingCycle from ["MONTHLY", "QUARTERLY", "YEARLY", "ADVANCE", "ONE_TIME", "CUSTOM"].
-5. Extract dueDate (YYYY-MM-DD), dueAmount (e.g. ₹1,450.00), consumerNumber (account/CA/consumer ID/phone), providerName (e.g. CESC, Airtel, Tata Power, etc.), targetUrl (official portal or target webpage).
-6. Detect if schedule is requested (e.g. "every month on 5th", "daily at 9am", "by next week"):
+3. Detect category from ["ELECTRICITY", "WATER", "GAS", "INTERNET", "MOBILE", "CREDIT_CARD", "SHOPPING", "COMMERCE_WATCH", "FORM_FILL", "GENERAL"].
+   - If the task is about watching a price drop, monitoring e-commerce deals, or auto-buying an item when the price drops below a threshold (e.g. Amazon, Flipkart, Myntra, etc.), choose "COMMERCE_WATCH".
+4. If "COMMERCE_WATCH" or shopping price alert is detected, extract priceCondition:
+   - targetPrice (number, e.g. 19999 if user says "under 20000" or "drop to 19999")
+   - currentPrice (number if user mentions current price)
+   - currency (e.g. "INR")
+   - checkIntervalMinutes (default 30)
+   - autoAddToCart (boolean, default true)
+   - autoProceedToCheckout (boolean, default true)
+   - productTitle (string if product is named)
+5. Detect billingCycle from ["MONTHLY", "QUARTERLY", "YEARLY", "ADVANCE", "ONE_TIME", "CUSTOM"].
+6. Extract dueDate (YYYY-MM-DD), dueAmount (e.g. ₹1,450.00), consumerNumber (account/CA/consumer ID/phone), providerName (e.g. CESC, Airtel, Amazon, Flipkart, Tata Power, etc.), targetUrl (official portal or target webpage).
+7. Detect if schedule is requested (e.g. "every month on 5th", "daily at 9am", "check every 30 mins"):
    - frequency: "MONTHLY" | "WEEKLY" | "DAILY" | "CUSTOM_DAYS" | "ONCE"
    - time: e.g. "09:30"
    - dayOfMonth: (1-31) if monthly
    - dayOfWeek: (0-6) if weekly
    - autoExecute: false (CRITICAL: always false for financial actions so user confirms payment).
-7. Identify missing critical fields needed for execution/scheduling from ["consumerNumber", "providerName", "dueAmount", "targetUrl", "dueDate"].
-8. Write a friendly, polite clarificationPrompt asking for the missing fields if any are required.
-9. State safety reminder: "Safety Guard: Agent will navigate, retrieve the bill/QR code, and trigger a confirmation reminder before finalizing any financial payment or sensitive submission."
+8. Identify missing critical fields needed for execution/scheduling from ["consumerNumber", "providerName", "dueAmount", "targetUrl", "dueDate"].
+9. Write a friendly, polite clarificationPrompt asking for the missing fields if any are required.
+10. State safety reminder: "Safety Guard: Agent will navigate, verify price/bill, add to cart or prepare payment, and always pause for human approval before final payment authorization."
 
 Respond with ONLY a JSON object in this schema:
 {
   "formattedGoal": "...",
   "title": "...",
-  "category": "ELECTRICITY",
-  "billingCycle": "MONTHLY",
+  "category": "COMMERCE_WATCH",
+  "billingCycle": "ONE_TIME",
   "dueDate": "YYYY-MM-DD",
   "dueAmount": "₹1,450.00",
   "consumerNumber": "...",
   "providerName": "...",
   "targetUrl": "...",
+  "priceCondition": {
+    "targetPrice": 19999,
+    "currentPrice": 24999,
+    "currency": "INR",
+    "checkIntervalMinutes": 30,
+    "autoAddToCart": true,
+    "autoProceedToCheckout": true,
+    "productTitle": "..."
+  },
   "schedule": {
     "enabled": true,
-    "frequency": "MONTHLY",
+    "frequency": "DAILY",
     "time": "09:30",
     "dayOfMonth": 5,
     "autoExecute": false
   },
-  "missingFields": ["consumerNumber"],
+  "missingFields": [],
   "clarificationPrompt": "...",
   "requiresHumanApproval": true,
   "safetySummary": "..."
@@ -629,6 +648,16 @@ Respond with ONLY a JSON object in this schema:
             consumerNumber: parsed.consumerNumber || undefined,
             providerName: parsed.providerName || undefined,
             targetUrl: normalizeExtractedUrl(parsed.targetUrl || params.currentUrl, params.rawGoal),
+            priceCondition: parsed.priceCondition ? {
+              targetPrice: typeof parsed.priceCondition.targetPrice === "number" ? parsed.priceCondition.targetPrice : (parsed.priceCondition.targetPrice ? parseFloat(String(parsed.priceCondition.targetPrice).replace(/[^0-9.]/g, "")) : undefined),
+              currentPrice: typeof parsed.priceCondition.currentPrice === "number" ? parsed.priceCondition.currentPrice : (parsed.priceCondition.currentPrice ? parseFloat(String(parsed.priceCondition.currentPrice).replace(/[^0-9.]/g, "")) : undefined),
+              currency: parsed.priceCondition.currency || "INR",
+              checkIntervalMinutes: parsed.priceCondition.checkIntervalMinutes || 30,
+              autoAddToCart: parsed.priceCondition.autoAddToCart ?? true,
+              autoProceedToCheckout: parsed.priceCondition.autoProceedToCheckout ?? true,
+              priceMatched: false,
+              productTitle: parsed.priceCondition.productTitle || undefined
+            } : undefined,
             schedule: parsed.schedule || {
               enabled: /every|monthly|daily|weekly|schedule/i.test(params.rawGoal),
               frequency: "MONTHLY",
@@ -639,7 +668,7 @@ Respond with ONLY a JSON object in this schema:
             missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields : [],
             clarificationPrompt: parsed.clarificationPrompt || undefined,
             requiresHumanApproval: true,
-            safetySummary: parsed.safetySummary || "Safety Guard: Agent will navigate and prepare payment, reminding you for final approval before any charge."
+            safetySummary: parsed.safetySummary || "Safety Guard: Agent will navigate and prepare actions, pausing for your explicit confirmation before any purchase or payment."
           };
         }
       } catch (err) {
@@ -653,8 +682,45 @@ Respond with ONLY a JSON object in this schema:
     let category: import("@difm/shared").TaskCategory = "GENERAL";
     let providerName: string | undefined = undefined;
     let portalUrl = params.currentUrl || "";
+    let priceCondition: import("@difm/shared").PriceCondition | undefined = undefined;
 
-    if (/cesc/i.test(raw)) {
+    // Check for shopping / commerce watch
+    const isCommerce = /amazon|flipkart|myntra|meesho|ajio|croma|price\s*drop|track\s*price|when\s*price|below\s*(?:₹|rs\.?|\$)?\s*\d+|under\s*(?:₹|rs\.?|\$)?\s*\d+/i.test(raw) ||
+      (portalUrl && /amazon\.|flipkart\.|myntra\.|meesho\.|ajio\./i.test(portalUrl));
+
+    if (isCommerce) {
+      category = "COMMERCE_WATCH";
+      if (/amazon/i.test(raw) || /amazon\./i.test(portalUrl)) {
+        providerName = "Amazon";
+        if (!portalUrl) portalUrl = "https://www.amazon.in";
+      } else if (/flipkart/i.test(raw) || /flipkart\./i.test(portalUrl)) {
+        providerName = "Flipkart";
+        if (!portalUrl) portalUrl = "https://www.flipkart.com";
+      } else if (/myntra/i.test(raw) || /myntra\./i.test(portalUrl)) {
+        providerName = "Myntra";
+        if (!portalUrl) portalUrl = "https://www.myntra.com";
+      } else {
+        providerName = "Shopping Store";
+      }
+
+      // Extract target price (e.g., "under 20000", "below 15000", "drop to 999")
+      const targetMatch = raw.match(/(?:below|under|drops?\s+to|target|reach(?:es)?)\s*(?:rs\.?|inr|₹|\$)?\s*([\d,]+)/i) ||
+        raw.match(/(?:rs\.?|inr|₹|\$)\s*([\d,]+)\s*(?:or\s+(?:below|less)|target)/i);
+      const currentMatch = raw.match(/(?:currently|current\s+price|now\s+at)\s*(?:rs\.?|inr|₹|\$)?\s*([\d,]+)/i);
+
+      const targetPrice = targetMatch ? parseFloat(targetMatch[1].replace(/,/g, "")) : undefined;
+      const currentPrice = currentMatch ? parseFloat(currentMatch[1].replace(/,/g, "")) : undefined;
+
+      priceCondition = {
+        targetPrice,
+        currentPrice,
+        currency: "INR",
+        checkIntervalMinutes: 30,
+        autoAddToCart: true,
+        autoProceedToCheckout: true,
+        priceMatched: false
+      };
+    } else if (/cesc/i.test(raw)) {
       category = "ELECTRICITY";
       providerName = "CESC Electricity";
       portalUrl = "https://www.cesc.co.in";
@@ -694,25 +760,31 @@ Respond with ONLY a JSON object in this schema:
     const dateMatch = raw.match(/(?:by|before|on|due)?\s*((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{0,4}))/i);
 
     const missing: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate"> = [];
-    if (!numMatch && category !== "GENERAL") missing.push("consumerNumber");
+    if (!numMatch && category !== ("GENERAL" as string) && category !== ("COMMERCE_WATCH" as string) && category !== ("SHOPPING" as string)) missing.push("consumerNumber");
     if (!providerName && !portalUrl) missing.push("providerName");
 
-    const title = providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw);
-    const formattedGoal = `Autonomously perform: ${raw}. Locate target form/account field, populate verified user details, verify amount, and present confirmation for human approval.`;
+    const title = category === "COMMERCE_WATCH"
+      ? `Watch Price: ${providerName || "Product"}${priceCondition?.targetPrice ? ` (Under ₹${priceCondition.targetPrice.toLocaleString("en-IN")})` : ""}`
+      : (providerName ? `Pay ${providerName} Bill` : (raw.length > 50 ? raw.slice(0, 47) + "..." : raw));
+    
+    const formattedGoal = category === "COMMERCE_WATCH"
+      ? `Monitor product price on ${providerName || "store"}. When price drops below ${priceCondition?.targetPrice ? `₹${priceCondition.targetPrice}` : "target"}, add item to cart and pause at checkout for 1-click human confirmation.`
+      : `Autonomously perform: ${raw}. Locate target form/account field, populate verified user details, verify amount, and present confirmation for human approval.`;
 
     return {
       formattedGoal,
       title,
       category,
-      billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : "MONTHLY",
+      billingCycle: /quarterly/i.test(raw) ? "QUARTERLY" : /yearly/i.test(raw) ? "YEARLY" : (category === "COMMERCE_WATCH" ? "ONE_TIME" : "MONTHLY"),
       dueDate: dateMatch ? dateMatch[1] : undefined,
-      dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : undefined,
+      dueAmount: amtMatch ? (amtMatch[1].startsWith("₹") ? amtMatch[1] : `₹${amtMatch[1]}`) : (priceCondition?.targetPrice ? `₹${priceCondition.targetPrice.toLocaleString("en-IN")}` : undefined),
       consumerNumber: numMatch ? numMatch[1] : undefined,
       providerName,
       targetUrl: normalizeExtractedUrl(portalUrl, raw),
+      priceCondition,
       schedule: {
-        enabled: /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
-        frequency: "MONTHLY",
+        enabled: category === "COMMERCE_WATCH" ? true : /every|monthly|schedule|repeat|daily|weekly/i.test(raw),
+        frequency: category === "COMMERCE_WATCH" ? "DAILY" : "MONTHLY",
         time: "09:30",
         dayOfMonth: 5,
         autoExecute: false

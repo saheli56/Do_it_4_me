@@ -13,6 +13,7 @@ export const TaskCategorySchema = z.enum([
   "MOBILE",
   "CREDIT_CARD",
   "SHOPPING",
+  "COMMERCE_WATCH",
   "OTHER"
 ]);
 export type TaskCategory = z.infer<typeof TaskCategorySchema>;
@@ -91,6 +92,20 @@ export const BillingCycleSchema = z.enum([
 ]);
 export type BillingCycle = z.infer<typeof BillingCycleSchema>;
 
+export const PriceConditionSchema = z.object({
+  targetPrice: z.number().optional(),
+  currentPrice: z.number().optional(),
+  currency: z.string().default("INR"),
+  checkIntervalMinutes: z.number().default(30),
+  autoAddToCart: z.boolean().default(true),
+  autoProceedToCheckout: z.boolean().default(true),
+  lastCheckedAt: z.number().optional(),
+  priceMatched: z.boolean().default(false),
+  productTitle: z.string().optional(),
+  productImageUrl: z.string().optional()
+});
+export type PriceCondition = z.infer<typeof PriceConditionSchema>;
+
 export const BillerInfoSchema = z.object({
   profileId: z.string().optional(),
   providerName: z.string().optional(),
@@ -105,7 +120,8 @@ export const BillerInfoSchema = z.object({
   phoneNumber: z.string().optional(),
   emailAddress: z.string().optional(),
   amount: z.string().optional(),
-  additionalInstructions: z.string().optional()
+  additionalInstructions: z.string().optional(),
+  priceCondition: PriceConditionSchema.optional()
 });
 export type BillerInfo = z.infer<typeof BillerInfoSchema>;
 
@@ -118,7 +134,8 @@ export const BillExtractResultSchema = z.object({
   billingCycle: BillingCycleSchema.optional().default("MONTHLY"),
   portalUrl: z.string().optional(),
   customerName: z.string().optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  priceCondition: PriceConditionSchema.optional()
 });
 export type BillExtractResult = z.infer<typeof BillExtractResultSchema>;
 
@@ -136,6 +153,7 @@ export const PendingTaskItemSchema = z.object({
   requiresSensitiveApproval: z.boolean().default(true),
   notes: z.string().optional(),
   billerInfo: BillerInfoSchema.optional(),
+  priceCondition: PriceConditionSchema.optional(),
   createdAt: z.number(),
   completedAt: z.number().optional()
 });
@@ -150,7 +168,8 @@ export const CreatePendingTaskSchema = z.object({
   targetUrl: z.string().optional(),
   schedule: TaskScheduleSchema.optional(),
   notes: z.string().optional(),
-  billerInfo: BillerInfoSchema.optional()
+  billerInfo: BillerInfoSchema.optional(),
+  priceCondition: PriceConditionSchema.optional()
 });
 export type CreatePendingTask = z.infer<typeof CreatePendingTaskSchema>;
 
@@ -164,7 +183,8 @@ export const UpdatePendingTaskSchema = z.object({
   status: PendingTaskStatusSchema.optional(),
   schedule: TaskScheduleSchema.optional().nullable(),
   notes: z.string().optional().nullable(),
-  billerInfo: BillerInfoSchema.optional().nullable()
+  billerInfo: BillerInfoSchema.optional().nullable(),
+  priceCondition: PriceConditionSchema.optional().nullable()
 });
 export type UpdatePendingTask = z.infer<typeof UpdatePendingTaskSchema>;
 

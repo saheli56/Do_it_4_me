@@ -44,7 +44,18 @@ async function checkDueTasksAndNotify() {
         const cacheKey = `sched-${task.id}-${task.schedule?.nextRunAt}`;
         if (NOTIFIED_CACHE.has(cacheKey)) continue;
 
-        if (task.schedule?.autoExecute) {
+        if (task.category === "COMMERCE_WATCH" || task.priceCondition || task.billerInfo?.priceCondition) {
+          const cond = task.priceCondition || task.billerInfo?.priceCondition;
+          const targetStr = cond?.targetPrice ? ` (Target: ≤ ₹${cond.targetPrice.toLocaleString("en-IN")})` : "";
+          chrome.notifications.create(`sched-commerce-${task.id}`, {
+            type: "basic",
+            iconUrl: chrome.runtime.getURL("/wxt.svg"),
+            title: `Price Drop Alert: ${task.title}${targetStr}`,
+            message: `Target price condition met. Agent has prepared cart and is ready for your 1-click checkout confirmation.`,
+            priority: 2,
+            requireInteraction: true
+          });
+        } else if (task.schedule?.autoExecute) {
           chrome.notifications.create(`sched-run-${task.id}`, {
             type: "basic",
             iconUrl: chrome.runtime.getURL("/wxt.svg"),
