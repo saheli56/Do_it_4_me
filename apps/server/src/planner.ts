@@ -120,27 +120,14 @@ export class PlannerService {
     observation: PageObservation,
     stepHistory: string[]
   ): Promise<AgentAction> {
-    const formattedTree = formatSemanticTreeForPrompt(observation.interactiveNodes);
-
+    // Keep last 5 steps to prevent prompt explosion on long tasks
+    const recentHistory = stepHistory.slice(-5);
     const historyPrompt =
-      stepHistory.length > 0
-        ? `\nPREVIOUS ACTIONS TAKEN:\n${stepHistory.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+      recentHistory.length > 0
+        ? `\nPREVIOUS ACTIONS TAKEN:\n${recentHistory.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
         : "";
 
-    const userMessage = `
-USER GOAL: "${goal}"
-CURRENT URL: ${observation.url}
-PAGE TITLE: "${observation.title}"
-${historyPrompt}
-
-<untrusted_webpage_content>
-INTERACTIVE ELEMENTS:
-${formattedTree}
-</untrusted_webpage_content>
-
-Analyze the user goal and the interactive elements, then output the next JSON action.`;
-
-    // Prioritize high-quota models: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b, allam-2-7b
+    // Candidate models in preference order
     const candidateModels = [
       this.model,
       "openai/gpt-oss-120b",
@@ -150,6 +137,25 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let lastError: string = "";
+
+    // Helper to build user prompt with variable tree detail level
+    const buildUserPrompt = (maxNodes = 80, maxChars = 6000) => {
+      const tree = formatSemanticTreeForPrompt(observation.interactiveNodes, maxNodes, maxChars);
+      return `
+USER GOAL: "${goal}"
+CURRENT URL: ${observation.url}
+PAGE TITLE: "${observation.title}"
+${historyPrompt}
+
+<untrusted_webpage_content>
+INTERACTIVE ELEMENTS:
+${tree}
+</untrusted_webpage_content>
+
+Analyze the user goal and the interactive elements, then output the next JSON action.`;
+    };
+
+    let userMessage = buildUserPrompt(80, 6000);
 
     for (const modelToTry of candidateModels) {
       try {
@@ -163,12 +169,28 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
             ],
             response_format: { type: "json_object" },
             temperature: 0.1,
-            max_tokens: 800
+            max_tokens: 500
           });
           messageContent = response.choices[0]?.message?.content || "{}";
-        } catch (jsonErr: any) {
-          // If model fails strict server-side JSON schema validation, retry without response_format
-          if (jsonErr?.status === 400 || jsonErr?.message?.includes("JSON")) {
+        } catch (apiErr: any) {
+          const errStr = (apiErr?.message || "").toLowerCase();
+          const isLengthError = errStr.includes("reduce the length") || errStr.includes("too long") || errStr.includes("context") || errStr.includes("token");
+
+          // If prompt was too large, retry with compact tree (30 nodes, 2500 chars)
+          if (isLengthError) {
+            console.warn(`Prompt length exceeded for ${modelToTry}, retrying with compressed semantic tree...`);
+            const compactUserMessage = buildUserPrompt(30, 2500);
+            const retryResponse = await this.client.chat.completions.create({
+              model: modelToTry,
+              messages: [
+                { role: "system", content: "You are the DIFM Web Action Planner. Respond ONLY in valid JSON matching: {\"action\": {\"type\": \"CLICK\"|\"TYPE\"|\"SELECT\"|\"COMPLETE\"|\"FAIL\", \"targetId\": \"...\", \"text\": \"...\", \"description\": \"...\"}}" },
+                { role: "user", content: compactUserMessage }
+              ],
+              temperature: 0.1,
+              max_tokens: 350
+            });
+            messageContent = retryResponse.choices[0]?.message?.content || "{}";
+          } else if (apiErr?.status === 400 || errStr.includes("json")) {
             const fallbackResponse = await this.client.chat.completions.create({
               model: modelToTry,
               messages: [
@@ -176,11 +198,11 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
                 { role: "user", content: `${userMessage}\n\nIMPORTANT: Return ONLY a valid JSON object matching the requested schema.` }
               ],
               temperature: 0.1,
-              max_tokens: 800
+              max_tokens: 500
             });
             messageContent = fallbackResponse.choices[0]?.message?.content || "{}";
           } else {
-            throw jsonErr;
+            throw apiErr;
           }
         }
 

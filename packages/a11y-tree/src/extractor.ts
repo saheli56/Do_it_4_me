@@ -357,21 +357,58 @@ export function detectSecurityChallenge(doc: Document = typeof document !== "und
   return undefined;
 }
 
-export function formatSemanticTreeForPrompt(nodes: SemanticNode[]): string {
-  if (nodes.length === 0) {
+export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 120, maxChars = 10000): string {
+  if (!nodes || nodes.length === 0) {
     return "No interactive elements detected on page.";
   }
 
-  return nodes
-    .map((n) => {
-      let desc = `[${n.id}] ${n.role.toUpperCase()}`;
-      if (n.name) desc += ` "${n.name}"`;
-      if (n.href) desc += ` (href: "${n.href}")`;
-      if (n.value) desc += ` (value: "${n.value}")`;
-      if (n.placeholder) desc += ` (placeholder: "${n.placeholder}")`;
-      if (n.checked !== undefined) desc += ` [checked=${n.checked}]`;
-      if (n.disabled) desc += ` [disabled]`;
-      return desc;
-    })
-    .join("\n");
+  // Prioritize controls, inputs, buttons, and relevant interactive elements first
+  const prioritized = [...nodes].sort((a, b) => {
+    const isControlA = ["textbox", "button", "combobox", "checkbox", "radio", "searchbox"].includes(a.role);
+    const isControlB = ["textbox", "button", "combobox", "checkbox", "radio", "searchbox"].includes(b.role);
+    if (isControlA && !isControlB) return -1;
+    if (!isControlA && isControlB) return 1;
+
+    const hasNameA = Boolean(a.name || a.placeholder || a.value);
+    const hasNameB = Boolean(b.name || b.placeholder || b.value);
+    if (hasNameA && !hasNameB) return -1;
+    if (!hasNameA && hasNameB) return 1;
+
+    return 0;
+  });
+
+  const selectedNodes = prioritized.slice(0, maxNodes);
+  const lines: string[] = [];
+  let totalLen = 0;
+
+  for (const n of selectedNodes) {
+    let desc = `[${n.id}] ${n.role.toUpperCase()}`;
+    if (n.name) {
+      const cleanName = n.name.length > 80 ? n.name.slice(0, 77) + "..." : n.name;
+      desc += ` "${cleanName}"`;
+    }
+    if (n.value) {
+      const cleanVal = n.value.length > 50 ? n.value.slice(0, 47) + "..." : n.value;
+      desc += ` (value: "${cleanVal}")`;
+    }
+    if (n.placeholder) {
+      const cleanPl = n.placeholder.length > 50 ? n.placeholder.slice(0, 47) + "..." : n.placeholder;
+      desc += ` (placeholder: "${cleanPl}")`;
+    }
+    if (n.href) {
+      const cleanHref = n.href.length > 90 ? n.href.slice(0, 87) + "..." : n.href;
+      desc += ` (href: "${cleanHref}")`;
+    }
+    if (n.checked !== undefined) desc += ` [checked=${n.checked}]`;
+    if (n.disabled) desc += ` [disabled]`;
+
+    if (totalLen + desc.length + 1 > maxChars) {
+      lines.push(`... [${nodes.length - lines.length} more interactive elements omitted for length]`);
+      break;
+    }
+    lines.push(desc);
+    totalLen += desc.length + 1;
+  }
+
+  return lines.join("\n");
 }
