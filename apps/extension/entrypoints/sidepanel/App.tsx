@@ -67,7 +67,9 @@ import {
   ScanIcon,
   FileArrowUpIcon,
   FloppyDiskIcon,
-  FileTextIcon
+  FileTextIcon,
+  GlobeIcon,
+  DeviceMobileIcon
 } from "../../src/components/icons";
 
 function getDefaultInitialProfiles(): UserProfile[] {
@@ -2605,6 +2607,7 @@ export function App() {
   const activePendingCount = pendingTasks.filter((t) => t.status !== "COMPLETED").length;
   const dueSoonCount = pendingTasks.filter((t) => t.status === "DUE_SOON").length;
   const currentAccentStyles = getAccentThemeStyles(accentColor);
+  const currentThemeStyles = ACCENT_THEME_OPTIONS.find((t) => t.id === accentColor) || ACCENT_THEME_OPTIONS[0];
 
   const handleSelectAccentColor = (newAccent: AppAccentColor) => {
     setAccentColor(newAccent);
@@ -3419,34 +3422,42 @@ export function App() {
               <div class="flex flex-wrap gap-1.5">
                 {[
                   {
-                    label: "⚡ CESC Electricity (₹1,450 by 15th)",
+                    icon: LightningIcon,
+                    label: "CESC Electricity (₹1,450 by 15th)",
                     text: "pay my cesc electric bill of 1450 before oct 15 every month on 5th"
                   },
                   {
-                    label: "📱 Airtel Recharge (₹479 on 1st)",
+                    icon: DeviceMobileIcon,
+                    label: "Airtel Recharge (₹479 on 1st)",
                     text: "recharge my airtel mobile with 479 pack on 1st of every month"
                   },
                   {
-                    label: "💳 HDFC Credit Card (₹8,500 by 20th)",
+                    icon: CreditCardIcon,
+                    label: "HDFC Credit Card (₹8,500 by 20th)",
                     text: "pay hdfc credit card bill 8500 due on 20th every month"
                   },
                   {
-                    label: "🌐 Broadband (₹999 on 10th)",
+                    icon: GlobeIcon,
+                    label: "Broadband (₹999 on 10th)",
                     text: "pay wifi broadband bill of 999 before 10th monthly"
                   }
-                ].map((sample, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setNoteInput(sample.text);
-                      handleAnalyzeRawNote(sample.text);
-                    }}
-                    class="text-[10px] px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.06] hover:border-white/[0.15] text-zinc-300 hover:text-white transition active:scale-95"
-                  >
-                    {sample.label}
-                  </button>
-                ))}
+                ].map((sample, idx) => {
+                  const IconComp = sample.icon;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setNoteInput(sample.text);
+                        handleAnalyzeRawNote(sample.text);
+                      }}
+                      class="text-[10px] px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.06] hover:border-white/[0.15] text-zinc-300 hover:text-white transition active:scale-95 flex items-center gap-1.5"
+                    >
+                      <IconComp size={11} class="text-zinc-400" />
+                      <span>{sample.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
