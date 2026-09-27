@@ -3625,28 +3625,28 @@ export function App() {
         <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
           {/* Note Input & AI Auto-Structuring Card */}
           <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
+            <div class="flex items-start justify-between gap-2.5 border-b border-white/[0.06] pb-2.5">
+              <div class="flex items-start gap-2.5 min-w-0 flex-1">
                 <div
-                  class="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-sm"
+                  class="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 mt-0.5"
                   style={{
                     background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
                   }}
                 >
                   <FileTextIcon size={13} />
                 </div>
-                <div>
-                  <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
-                    {activeNoteId ? "Editing Note" : "Smart Notes & Raw Tasks"}
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5 truncate">
+                    <span>{activeNoteId ? "Editing Note" : "Smart Notes & Raw Tasks"}</span>
                     {activeNoteId && (
-                      <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
+                      <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono shrink-0">
                         Active
                       </span>
                     )}
                   </h3>
-                  <p class="text-[10px] text-zinc-400">
+                  <p class="text-[10px] text-zinc-400 leading-tight mt-0.5">
                     {activeNoteId
-                      ? "Modify your message, URL, or schedule parameters below and click Save & Run"
+                      ? "Modify your note or schedule below and click Save & Run"
                       : "Jot down raw thoughts or messy bills — AI parses, clarifies, and schedules"}
                   </p>
                 </div>
@@ -3661,11 +3661,11 @@ export function App() {
                     setNoteInput("");
                     setCustomPortalUrl("");
                   }}
-                  class="text-[10px] px-2 py-1 rounded-md bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 transition flex items-center gap-1 active:scale-95"
+                  class="shrink-0 whitespace-nowrap text-[10px] font-medium px-2 py-1 rounded-md bg-white/[0.08] hover:bg-white/[0.14] text-zinc-200 hover:text-white border border-white/[0.1] transition flex items-center gap-1 active:scale-95 shadow-sm"
                   title="Start a fresh note"
                 >
                   <PlusIcon size={11} />
-                  <span>+ New Note</span>
+                  <span>New Note</span>
                 </button>
               )}
             </div>
