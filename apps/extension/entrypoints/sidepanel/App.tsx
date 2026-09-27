@@ -2258,6 +2258,7 @@ export function App() {
     } finally {
       setIsNoteAnalyzing(false);
     }
+    return draft;
   };
 
   const handleUpdateNoteDraftField = (field: string, value: any) => {
@@ -2391,24 +2392,88 @@ export function App() {
 
   const handleSaveAndRunCustomUrlNote = async (overrideUrl?: string) => {
     const finalUrl = (overrideUrl !== undefined ? overrideUrl : customPortalUrl || "").trim();
-    if (finalUrl && activeNoteDraft) {
-      handleUpdateNoteDraftField("targetUrl", finalUrl);
-    }
-
-    if (activeNoteDraft) {
-      await handleScheduleNoteToTasks(true);
-      return;
-    }
-
     const rawText = noteInput.trim() || (finalUrl ? `Pay bill at ${finalUrl}` : "Run note automation");
     const fullText = finalUrl && !rawText.includes(finalUrl) ? `${rawText} (Portal: ${finalUrl})` : rawText;
 
     setIsNoteAnalyzing(true);
     try {
-      await handleAnalyzeRawNote(fullText);
+      let draftToUse = activeNoteDraft;
+      if (!draftToUse) {
+        draftToUse = await handleAnalyzeRawNote(fullText);
+      }
+
+      if (draftToUse && finalUrl) {
+        draftToUse = { ...draftToUse, targetUrl: finalUrl };
+        setActiveNoteDraft(draftToUse);
+      }
+
+      const noteId = activeNoteId || "note-" + Date.now();
+      setActiveNoteId(noteId);
+
+      setSavedNotes((prev) => {
+        const idx = prev.findIndex((n) => n.id === noteId);
+        const item: RawNoteItem = {
+          id: noteId,
+          rawText: fullText,
+          createdAt: Date.now(),
+          status: "SCHEDULED",
+          parsedDraft: draftToUse || undefined
+        };
+        if (idx >= 0) {
+          const cp = [...prev];
+          cp[idx] = { ...cp[idx], ...item };
+          return cp;
+        }
+        return [item, ...prev];
+      });
+
+      // Also create pending task schedule
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
+      const customerFullName = [currentActiveProfile?.firstName, currentActiveProfile?.lastName].filter(Boolean).join(" ");
+
+      const billerInfo = draftToUse
+        ? {
+            providerName: draftToUse.providerName || undefined,
+            billType: draftToUse.category,
+            billingCycle: draftToUse.billingCycle,
+            consumerNumber: draftToUse.consumerNumber || undefined,
+            amount: draftToUse.dueAmount || undefined,
+            portalUrl: draftToUse.targetUrl || finalUrl || undefined,
+            firstName: currentActiveProfile?.firstName || undefined,
+            lastName: currentActiveProfile?.lastName || undefined,
+            customerName: customerFullName || undefined,
+            phoneNumber: currentActiveProfile?.phone || undefined,
+            emailAddress: currentActiveProfile?.email || undefined,
+            additionalInstructions: draftToUse.formattedGoal
+          }
+        : undefined;
+
+      try {
+        await fetch("http://127.0.0.1:3001/pending-tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: draftToUse?.title || rawText.slice(0, 40),
+            priority: "HIGH",
+            category: draftToUse?.category || "GENERAL",
+            dueDate: draftToUse?.dueDate || undefined,
+            notes: draftToUse?.formattedGoal || fullText,
+            targetUrl: draftToUse?.targetUrl || finalUrl || tab?.url || undefined,
+            schedule: draftToUse?.schedule || { enabled: true, frequency: "MONTHLY", time: "09:30", dayOfMonth: 5, autoExecute: false },
+            billerInfo
+          })
+        });
+        fetchPendingTasks();
+      } catch (err) {
+        console.warn("Could not sync to backend schedules:", err);
+      }
+
+      // Switch to execute tab and run immediately
       setActiveTab("EXECUTE");
-      setGoal(fullText);
-      handleStartTask(fullText, finalUrl || undefined);
+      const goalToRun = draftToUse?.formattedGoal || fullText;
+      setGoal(goalToRun);
+      handleStartTask(goalToRun, draftToUse?.targetUrl || finalUrl || undefined);
     } catch (e) {
       console.error("Failed to save and run note:", e);
     } finally {
@@ -2501,6 +2566,7 @@ export function App() {
   const handleSelectNote = (note: RawNoteItem) => {
     setActiveNoteId(note.id);
     setNoteInput(note.rawText);
+    setCustomPortalUrl(note.parsedDraft?.targetUrl || "");
     setActiveNoteDraft(note.parsedDraft || null);
   };
 
@@ -3938,20 +4004,42 @@ export function App() {
                       }`}
                     >
                       <div class="flex items-start justify-between gap-2">
-                        <p class="text-xs text-zinc-200 line-clamp-2 leading-relaxed font-medium">
-                          "{note.rawText}"
-                        </p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteNote(note.id);
-                          }}
-                          class="text-zinc-500 hover:text-rose-400 p-1 rounded hover:bg-white/[0.05] transition shrink-0"
-                          title="Delete note"
-                        >
-                          <TrashIcon size={12} />
-                        </button>
+                        <div class="flex-1 space-y-1 min-w-0">
+                          <p class="text-xs text-zinc-200 line-clamp-2 leading-relaxed font-medium">
+                            "{note.rawText}"
+                          </p>
+                          {note.parsedDraft?.targetUrl && (
+                            <div class="flex items-center gap-1 text-[10px] text-emerald-400 font-mono truncate">
+                              <GlobeIcon size={11} class="shrink-0 text-emerald-400" />
+                              <span class="truncate">{note.parsedDraft.targetUrl}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectNote(note);
+                            }}
+                            class="text-zinc-400 hover:text-zinc-200 p-1 rounded hover:bg-white/[0.05] transition flex items-center gap-1 text-[10px]"
+                            title="Edit this note"
+                          >
+                            <PencilSimpleIcon size={11} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNote(note.id);
+                            }}
+                            class="text-zinc-500 hover:text-rose-400 p-1 rounded hover:bg-white/[0.05] transition"
+                            title="Delete note"
+                          >
+                            <TrashIcon size={12} />
+                          </button>
+                        </div>
                       </div>
 
                       <div class="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px]">
