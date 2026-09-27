@@ -27,7 +27,7 @@ async function checkDueTasksAndNotify() {
 
         chrome.notifications.create(`task-${task.id}`, {
           type: "basic",
-          iconUrl: chrome.runtime.getURL("/wxt.svg"),
+          iconUrl: chrome.runtime.getURL("/icon-128.png"),
           title: `⏰ Pending Task Due: ${task.title}`,
           message: `${task.description || task.title}\n${dueMsg}${amtMsg}${acctMsg}${notesMsg}`,
           priority: 2,
@@ -49,7 +49,7 @@ async function checkDueTasksAndNotify() {
           const targetStr = cond?.targetPrice ? ` (Target: ≤ ₹${cond.targetPrice.toLocaleString("en-IN")})` : "";
           chrome.notifications.create(`sched-commerce-${task.id}`, {
             type: "basic",
-            iconUrl: chrome.runtime.getURL("/wxt.svg"),
+            iconUrl: chrome.runtime.getURL("/icon-128.png"),
             title: `Price Drop Alert: ${task.title}${targetStr}`,
             message: `Target price condition met. Agent has prepared cart and is ready for your 1-click checkout confirmation.`,
             priority: 2,
@@ -58,7 +58,7 @@ async function checkDueTasksAndNotify() {
         } else if (task.schedule?.autoExecute) {
           chrome.notifications.create(`sched-run-${task.id}`, {
             type: "basic",
-            iconUrl: chrome.runtime.getURL("/wxt.svg"),
+            iconUrl: chrome.runtime.getURL("/icon-128.png"),
             title: `⚡ DIFM Scheduled Trigger: ${task.title}`,
             message: `Starting automated action for: ${task.title}. Open sidepanel to supervise.`,
             priority: 2
@@ -66,7 +66,7 @@ async function checkDueTasksAndNotify() {
         } else {
           chrome.notifications.create(`sched-alert-${task.id}`, {
             type: "basic",
-            iconUrl: chrome.runtime.getURL("/wxt.svg"),
+            iconUrl: chrome.runtime.getURL("/icon-128.png"),
             title: `🗓️ Scheduled Action Ready: ${task.title}`,
             message: `Task is scheduled for execution right now. Click to execute.`,
             priority: 2,
@@ -99,7 +99,7 @@ export default defineBackground(() => {
     if (message?.type === "SENSITIVE_APPROVAL_REQUIRED") {
       chrome.notifications.create(`approval-${Date.now()}`, {
         type: "basic",
-        iconUrl: chrome.runtime.getURL("/wxt.svg"),
+        iconUrl: chrome.runtime.getURL("/icon-128.png"),
         title: "⚠️ Action Approval Required (Sensitive Decision)",
         message: `Task "${message.goal}" requires your confirmation for: ${message.actionType}.`,
         priority: 2,

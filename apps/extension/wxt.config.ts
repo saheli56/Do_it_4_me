@@ -12,7 +12,17 @@ export default defineConfig({
     permissions: ["activeTab", "tabs", "sidePanel", "scripting", "storage", "notifications", "alarms"],
     host_permissions: ["<all_urls>"],
     action: {
-      default_title: "Open Do It For Me"
+      default_title: "Open Do It For Me",
+      default_icon: {
+        "16": "icon-16.png",
+        "48": "icon-48.png",
+        "128": "icon-128.png"
+      }
+    },
+    icons: {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
     },
     side_panel: {
       default_path: "entrypoints/sidepanel/index.html"

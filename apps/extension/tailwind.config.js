@@ -40,7 +40,7 @@ export default {
         },
         slideDown: {
           "0%": { opacity: "0", transform: "translateY(-6px)", maxHeight: "0" },
-          "100%": { opacity: "1", transform: "translateY(0)", maxHeight: "500px" },
+          "100%": { opacity: "1", transform: "translateY(0)", maxHeight: "2000px" },
         },
         pulseSubtle: {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },

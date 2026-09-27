@@ -2116,12 +2116,12 @@ export function App() {
   }, [savedNotes]);
 
   // Smart Notes Action Handlers
-  const handleAnalyzeRawNote = async (textToParse?: string) => {
+  const handleAnalyzeRawNote = async (textToParse?: string, forceNew = false) => {
     const raw = (typeof textToParse === "string" ? textToParse : noteInput || "").trim();
     if (!raw) return;
     setIsNoteAnalyzing(true);
+    let draft: RawNoteItem["parsedDraft"] | null = null;
     try {
-      let draft: RawNoteItem["parsedDraft"] | null = null;
       let currentTabUrl: string | undefined = undefined;
 
       try {
@@ -2235,7 +2235,7 @@ export function App() {
         const dateMatch = raw.match(/(?:by|before|on|due)?\s*((\d{4}[-/.]\d{2}[-/.]\d{2})|(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{0,4}))/i);
 
         const missing: Array<"consumerNumber" | "providerName" | "dueAmount" | "targetUrl" | "dueDate"> = [];
-        if (!numMatch && category !== "GENERAL" && category !== "COMMERCE_WATCH" && category !== "SHOPPING") missing.push("consumerNumber");
+        if (!numMatch && category !== "GENERAL" && category !== "COMMERCE_WATCH") missing.push("consumerNumber");
         if (!providerName && !portalUrl) missing.push("providerName");
 
         const title = category === "COMMERCE_WATCH"
@@ -2273,7 +2273,7 @@ export function App() {
       if (draft) {
         setActiveNoteDraft(draft);
 
-        const existingIndex = activeNoteId ? savedNotes.findIndex((n) => n.id === activeNoteId) : -1;
+        const existingIndex = (!forceNew && activeNoteId) ? savedNotes.findIndex((n) => n.id === activeNoteId) : -1;
         const status = draft.missingFields && draft.missingFields.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT";
 
         if (existingIndex >= 0) {
@@ -3622,9 +3622,9 @@ export function App() {
 
       {/* SMART NOTES & RAW REMINDERS TAB VIEW */}
       {activeTab === "NOTES" && (
-        <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
+        <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in overflow-y-auto custom-scrollbar pr-1 pb-4">
           {/* Note Input & AI Auto-Structuring Card */}
-          <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass">
+          <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass shrink-0">
             <div class="flex items-start justify-between gap-2.5 border-b border-white/[0.06] pb-2.5">
               <div class="flex items-start gap-2.5 min-w-0 flex-1">
                 <div
@@ -3705,7 +3705,7 @@ export function App() {
                       type="button"
                       onClick={() => {
                         setNoteInput(sample.text);
-                        handleAnalyzeRawNote(sample.text);
+                        handleAnalyzeRawNote(sample.text, true);
                       }}
                       class="text-[10px] px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.06] hover:border-white/[0.15] text-zinc-300 hover:text-white transition active:scale-95 flex items-center gap-1.5"
                     >
@@ -3781,7 +3781,7 @@ export function App() {
 
           {/* Real-Time AI Understanding & Clarification Card */}
           {activeNoteDraft && (
-            <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass border border-white/[0.12] animate-slide-down">
+            <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass border border-white/[0.12] animate-slide-down shrink-0">
               {/* Status Header */}
               <div class="flex items-center justify-between border-b border-white/[0.06] pb-2">
                 <div class="flex items-center gap-2">
@@ -4014,24 +4014,24 @@ export function App() {
 
                 {/* Commerce Price Watch Condition Controls */}
                 {(activeNoteDraft.category === "COMMERCE_WATCH" || activeNoteDraft.priceCondition) && (
-                  <div class="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-emerald-200 space-y-2.5 animate-slide-down">
-                    <div class="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
-                      <div class="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
-                        <ShoppingCartSimpleIcon size={14} class="text-emerald-400" />
+                  <div class="p-3 rounded-xl border border-white/[0.12] bg-zinc-900/40 text-zinc-200 space-y-2.5 animate-slide-down">
+                    <div class="flex items-center justify-between border-b border-white/[0.06] pb-1.5">
+                      <div class="flex items-center gap-1.5 font-bold text-xs text-zinc-100">
+                        <ShoppingCartSimpleIcon size={14} class={currentAccentStyles.iconText || "accent-text"} />
                         <span>Price Drop & Auto-Checkout Engine</span>
                       </div>
-                      <span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 font-mono text-emerald-300">
+                      <span class={`text-[9px] px-2 py-0.5 rounded-full border font-mono ${currentAccentStyles.badge}`}>
                         Auto-Trigger
                       </span>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2">
                       <div>
-                        <label class="block text-[10px] font-semibold text-emerald-300 mb-1">
-                          Target Alert Price (₹) <span class="text-emerald-400">*</span>
+                        <label class="block text-[10px] font-semibold text-zinc-300 mb-1">
+                          Target Alert Price (₹) <span class={currentAccentStyles.textHighlight || "accent-text"}>*</span>
                         </label>
                         <div class="relative">
-                          <span class="absolute left-2.5 top-1.5 text-xs text-emerald-400 font-mono font-bold">₹</span>
+                          <span class={`absolute left-2.5 top-1.5 text-xs font-mono font-bold ${currentAccentStyles.textHighlight || "accent-text"}`}>₹</span>
                           <input
                             type="number"
                             value={activeNoteDraft.priceCondition?.targetPrice || ""}
@@ -4053,7 +4053,7 @@ export function App() {
                                 handleUpdateNoteDraftField("dueAmount", `₹${val.toLocaleString("en-IN")}`);
                               }
                             }}
-                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-emerald-500/40 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 font-mono"
+                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.12] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-color)] font-mono"
                           />
                         </div>
                       </div>
@@ -4082,17 +4082,17 @@ export function App() {
                               };
                               handleUpdateNoteDraftField("priceCondition", updatedCond);
                             }}
-                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 font-mono"
+                            class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-color)] font-mono"
                           />
                         </div>
                       </div>
                     </div>
 
                     {/* Commerce Automation Toggles */}
-                    <div class="space-y-1.5 pt-1 border-t border-emerald-500/15">
+                    <div class="space-y-1.5 pt-1 border-t border-white/[0.06]">
                       <label class="flex items-center justify-between text-[11px] text-zinc-200 cursor-pointer">
                         <span class="flex items-center gap-1.5">
-                          <CheckCircleIcon size={12} class="text-emerald-400" />
+                          <CheckCircleIcon size={12} class={currentAccentStyles.iconText || "accent-text"} />
                           <span>Auto-add product to cart when target reached</span>
                         </span>
                         <input
@@ -4111,7 +4111,7 @@ export function App() {
                             };
                             handleUpdateNoteDraftField("priceCondition", updatedCond);
                           }}
-                          class="rounded bg-zinc-900 border-zinc-700 accent-emerald-500 cursor-pointer"
+                          class="rounded bg-zinc-900 border-zinc-700 focus:ring-[var(--accent-color)] cursor-pointer"
                         />
                       </label>
 
@@ -4136,12 +4136,12 @@ export function App() {
                             };
                             handleUpdateNoteDraftField("priceCondition", updatedCond);
                           }}
-                          class="rounded bg-zinc-900 border-zinc-700 accent-emerald-500 cursor-pointer"
+                          class="rounded bg-zinc-900 border-zinc-700 focus:ring-[var(--accent-color)] cursor-pointer"
                         />
                       </label>
                     </div>
 
-                    <div class="text-[10px] text-emerald-300/80 bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/20 leading-relaxed">
+                    <div class="text-[10px] text-zinc-400 bg-zinc-900/60 p-2 rounded-lg border border-white/[0.06] leading-relaxed">
                       Agent monitors product price in background. When target is reached, it adds item to cart and brings you directly to the 1-click payment screen.
                     </div>
                   </div>
@@ -4196,7 +4196,7 @@ export function App() {
           )}
 
           {/* Saved Notes History & Notebook */}
-          <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass flex-1 min-h-[140px] flex flex-col">
+          <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass shrink-0 min-h-[140px] flex flex-col mb-4">
             <div class="flex items-center justify-between border-b border-white/[0.06] pb-2">
               <div class="flex items-center gap-1.5 text-xs font-bold text-zinc-200">
                 <FileTextIcon size={13} class="text-zinc-400" />
