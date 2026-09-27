@@ -687,6 +687,9 @@ export function App() {
         "Safety Guard: The agent will navigate and prepare payment, reminding you for final approval before any charge."
     };
   });
+  const [attachedTabNotice, setAttachedTabNotice] = useState<string | null>(null);
+  const [isUrlAttachOpen, setIsUrlAttachOpen] = useState(false);
+  const [customPortalUrl, setCustomPortalUrl] = useState("");
 
   // AI Smart Task Architect & Auto-Scheduler State
   const [isSmartSchedulerOpen, setIsSmartSchedulerOpen] = useState(false);
@@ -2294,23 +2297,122 @@ export function App() {
     }
   };
 
+  const handleToggleUrlAttach = async () => {
+    const nextState = !isUrlAttachOpen;
+    setIsUrlAttachOpen(nextState);
+    if (nextState && !customPortalUrl) {
+      try {
+        let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (!tab?.url) {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          tab = tabs[0];
+        }
+        if (tab?.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://") && !tab.url.startsWith("about:")) {
+          setCustomPortalUrl(tab.url);
+          if (activeNoteDraft) {
+            handleUpdateNoteDraftField("targetUrl", tab.url);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to query tab:", e);
+      }
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        const trimmed = text.trim();
+        setCustomPortalUrl(trimmed);
+        if (activeNoteDraft) {
+          handleUpdateNoteDraftField("targetUrl", trimmed);
+        }
+        setAttachedTabNotice(`Pasted URL: ${trimmed.slice(0, 32)}`);
+        setTimeout(() => setAttachedTabNotice(null), 3000);
+      }
+    } catch (e) {
+      console.warn("Clipboard read not permitted:", e);
+    }
+  };
+
   const handleAutoDetectTabForNote = async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (tab?.url && activeNoteDraft) {
-        let detectedProvider = activeNoteDraft.providerName;
+      let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tab?.url) {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        tab = tabs[0];
+      }
+      if (tab?.url) {
+        if (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:") || tab.url.startsWith("chrome-extension://")) {
+          setAttachedTabNotice("Cannot attach browser system page. Open a website first.");
+          setTimeout(() => setAttachedTabNotice(null), 3500);
+          return;
+        }
+
+        let detectedProvider = activeNoteDraft?.providerName;
         if (/cesc/i.test(tab.url)) detectedProvider = "CESC Electricity";
         else if (/airtel/i.test(tab.url)) detectedProvider = "Airtel";
         else if (/bescom/i.test(tab.url)) detectedProvider = "BESCOM";
         else if (/wbsedcl/i.test(tab.url)) detectedProvider = "WBSEDCL";
 
-        handleUpdateNoteDraftField("targetUrl", tab.url);
-        if (detectedProvider && !activeNoteDraft.providerName) {
-          handleUpdateNoteDraftField("providerName", detectedProvider);
+        setCustomPortalUrl(tab.url);
+        setIsUrlAttachOpen(true);
+
+        if (activeNoteDraft) {
+          handleUpdateNoteDraftField("targetUrl", tab.url);
+          if (detectedProvider && !activeNoteDraft.providerName) {
+            handleUpdateNoteDraftField("providerName", detectedProvider);
+          }
         }
+
+        setNoteInput((prev) => {
+          const cleanUrl = tab.url!;
+          if (!prev.trim()) {
+            return `Pay bill at ${cleanUrl}`;
+          }
+          if (prev.includes(cleanUrl)) return prev;
+          return `${prev.trim()} (Portal: ${cleanUrl})`;
+        });
+
+        const shortUrl = tab.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 32);
+        setAttachedTabNotice(`Attached: ${tab.title || shortUrl}`);
+        setTimeout(() => setAttachedTabNotice(null), 3500);
+      } else {
+        setAttachedTabNotice("No active web tab found");
+        setTimeout(() => setAttachedTabNotice(null), 3000);
       }
     } catch (e) {
       console.error("Failed to detect tab for note:", e);
+      setAttachedTabNotice("Failed to query active tab");
+      setTimeout(() => setAttachedTabNotice(null), 3000);
+    }
+  };
+
+  const handleSaveAndRunCustomUrlNote = async (overrideUrl?: string) => {
+    const finalUrl = (overrideUrl !== undefined ? overrideUrl : customPortalUrl || "").trim();
+    if (finalUrl && activeNoteDraft) {
+      handleUpdateNoteDraftField("targetUrl", finalUrl);
+    }
+
+    if (activeNoteDraft) {
+      await handleScheduleNoteToTasks(true);
+      return;
+    }
+
+    const rawText = noteInput.trim() || (finalUrl ? `Pay bill at ${finalUrl}` : "Run note automation");
+    const fullText = finalUrl && !rawText.includes(finalUrl) ? `${rawText} (Portal: ${finalUrl})` : rawText;
+
+    setIsNoteAnalyzing(true);
+    try {
+      await handleAnalyzeRawNote(fullText);
+      setActiveTab("EXECUTE");
+      setGoal(fullText);
+      handleStartTask(fullText, finalUrl || undefined);
+    } catch (e) {
+      console.error("Failed to save and run note:", e);
+    } finally {
+      setIsNoteAnalyzing(false);
     }
   };
 
@@ -3472,48 +3574,53 @@ export function App() {
               />
             </div>
 
-            {/* Note Action Buttons */}
-            <div class="flex items-center justify-between gap-2 pt-0.5">
+            {/* Target Web URL Input (Optional) */}
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/80 border border-white/[0.08]">
+              <GlobeIcon size={13} class="text-zinc-400 shrink-0" />
+              <input
+                type="url"
+                value={customPortalUrl}
+                onInput={(e) => setCustomPortalUrl((e.target as HTMLInputElement).value)}
+                placeholder="Paste Target URL / Web Page (optional)..."
+                class="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none font-mono"
+              />
+            </div>
+
+            {/* ONLY 2 Action Buttons: Clear and Save & Run */}
+            <div class="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleAutoDetectTabForNote}
-                class="text-[10px] px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center gap-1.5"
-                title="Attach current browser tab URL to note"
+                onClick={() => {
+                  setNoteInput("");
+                  setCustomPortalUrl("");
+                  setActiveNoteDraft(null);
+                  setActiveNoteId(null);
+                  setAttachedTabNotice(null);
+                }}
+                disabled={!noteInput.trim() && !customPortalUrl.trim()}
+                class={`px-3.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition active:scale-95 ${
+                  !noteInput.trim() && !customPortalUrl.trim() ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               >
-                <LinkSimpleIcon size={12} class="text-zinc-400" />
-                <span>Attach Active Web Tab</span>
+                Clear
               </button>
 
-              <div class="flex items-center gap-2">
-                {noteInput.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNoteInput("");
-                      setActiveNoteDraft(null);
-                      setActiveNoteId(null);
-                    }}
-                    class="text-[10px] px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition"
-                  >
-                    Clear
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  disabled={!noteInput.trim() || isNoteAnalyzing}
-                  onClick={() => handleAnalyzeRawNote(noteInput)}
-                  class={`px-3.5 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
-                    !noteInput.trim() || isNoteAnalyzing ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
-                  style={{
-                    background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
-                  }}
-                >
-                  <SparkleIcon size={13} class={isNoteAnalyzing ? "animate-spin" : ""} />
-                  <span>{isNoteAnalyzing ? "Analyzing Note..." : "Understand & Structure"}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={(!noteInput.trim() && !customPortalUrl.trim()) || isNoteAnalyzing}
+                onClick={() => handleSaveAndRunCustomUrlNote()}
+                class={`px-4 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
+                  (!noteInput.trim() && !customPortalUrl.trim()) || isNoteAnalyzing
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                }`}
+                style={{
+                  background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
+                }}
+              >
+                <PlayIcon size={13} class={isNoteAnalyzing ? "animate-spin" : ""} />
+                <span>{isNoteAnalyzing ? "Running..." : "Save & Run"}</span>
+              </button>
             </div>
           </div>
 
@@ -3718,6 +3825,35 @@ export function App() {
                           : ""}
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Target Portal / Web URL (Always shown & editable) */}
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      Target Web URL / Portal
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoDetectTabForNote}
+                      class="text-[9px] text-zinc-400 hover:text-white underline transition flex items-center gap-1"
+                    >
+                      <GlobeIcon size={10} />
+                      <span>Grab from active tab</span>
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900/80 border border-white/[0.08] text-xs text-zinc-300">
+                    <GlobeIcon size={13} class="text-zinc-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={activeNoteDraft.targetUrl || ""}
+                      placeholder="e.g. https://www.cesc.co.in or grab from tab"
+                      onInput={(e) =>
+                        handleUpdateNoteDraftField("targetUrl", (e.target as HTMLInputElement).value)
+                      }
+                      class="w-full bg-transparent text-xs text-white focus:outline-none placeholder-zinc-500"
+                    />
                   </div>
                 </div>
 
