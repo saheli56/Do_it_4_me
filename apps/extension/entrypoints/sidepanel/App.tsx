@@ -3696,6 +3696,11 @@ export function App() {
                     icon: GlobeIcon,
                     label: "Broadband (₹999 on 10th)",
                     text: "pay wifi broadband bill of 999 before 10th monthly"
+                  },
+                  {
+                    icon: ShoppingCartSimpleIcon,
+                    label: "Amazon Price Drop (₹19,999 Target)",
+                    text: "track Sony WH-1000XM4 on amazon.in, auto buy when price drops under 19999 (currently 24999)"
                   }
                 ].map((sample, idx) => {
                   const IconComp = sample.icon;
