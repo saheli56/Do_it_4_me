@@ -3009,8 +3009,20 @@ export function App() {
         }
       }
     };
+
+    const onGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsProfileDropdownOpen(false);
+        setIsMoreMenuOpen(false);
+      }
+    };
+
     window.addEventListener("paste", onGlobalPaste);
-    return () => window.removeEventListener("paste", onGlobalPaste);
+    window.addEventListener("keydown", onGlobalKeyDown);
+    return () => {
+      window.removeEventListener("paste", onGlobalPaste);
+      window.removeEventListener("keydown", onGlobalKeyDown);
+    };
   }, []);
 
   return (
@@ -3021,8 +3033,19 @@ export function App() {
       {/* Aceternity ambient glow backdrop */}
       <div class="ambient-glow" />
 
+      {/* Click-outside backdrop overlay for header dropdowns */}
+      {(isProfileDropdownOpen || isMoreMenuOpen) && (
+        <div
+          onClick={() => {
+            setIsProfileDropdownOpen(false);
+            setIsMoreMenuOpen(false);
+          }}
+          class="fixed inset-0 z-30 bg-black/10 backdrop-blur-[0.5px] cursor-default"
+        />
+      )}
+
       {/* Header Section */}
-      <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
+      <header class="relative z-40 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2 min-w-0">
           <div class="w-6 h-6 rounded-lg accent-gradient-bg flex items-center justify-center shadow-glow-sm shrink-0">
             <SparkleIcon size={13} class="text-white" />
