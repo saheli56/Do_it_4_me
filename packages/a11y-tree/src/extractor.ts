@@ -238,6 +238,79 @@ function isSocialElement(element: Element, href?: string, name?: string): boolea
   return SOCIAL_KEYWORDS.some((kw) => fullContext.includes(kw));
 }
 
+export function extractCleanPrice(container: Element): string | undefined {
+  if (!container) return undefined;
+
+  // 1. Target high-confidence active selling price selectors
+  const primarySelectors = [
+    '.priceToPay .a-offscreen',
+    '.priceToPay .a-price-whole',
+    '.apexPriceToPay .a-offscreen',
+    '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen',
+    '#corePriceDisplay_desktop_feature_div .priceToPay .a-price-whole',
+    '#corePrice_desktop .priceToPay .a-offscreen',
+    '.s-price-instructions-style .a-price:not(.a-text-price):not([data-a-strike="true"]) .a-offscreen',
+    '.s-price-instructions-style .a-price:not(.a-text-price):not([data-a-strike="true"]) .a-price-whole',
+    '.a-price:not(.a-text-price):not([data-a-strike="true"]):not(.basisPrice *) .a-offscreen',
+    '.a-price:not(.a-text-price):not([data-a-strike="true"]):not(.basisPrice *) .a-price-whole',
+    '#priceblock_dealprice',
+    '#priceblock_ourprice',
+    '._30jeq3._16Jk6d',
+    '._30jeq3',
+    '.Nx9bqj'
+  ];
+
+  for (const sel of primarySelectors) {
+    try {
+      const el = container.querySelector(sel);
+      if (el && el.textContent) {
+        // Ensure this element is not inside a strikethrough/mrp ancestor
+        if (el.closest('del, s, strike, .a-text-strike, [data-a-strike="true"], .a-text-price, .basisPrice, [class*="strike" i], [class*="mrp" i]')) {
+          continue;
+        }
+        const txt = el.textContent.trim().replace(/\s+/g, " ");
+        const match = txt.match(/[\d,]+(?:\.\d+)?/);
+        if (match && match[0].replace(/,/g, "").length >= 2) {
+          const rawNum = match[0];
+          return txt.startsWith("₹") || txt.startsWith("$") ? txt : `₹${rawNum}`;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Fallback: Collect all price candidates and filter out strikethroughs
+  try {
+    const allPriceElements = Array.from(
+      container.querySelectorAll('.a-price .a-offscreen, .a-price-whole, [data-a-color="price"], span[class*="price" i], ._30jeq3, .Nx9bqj')
+    );
+
+    const validCandidates: { priceText: string; priceNum: number }[] = [];
+
+    for (const el of allPriceElements) {
+      if (el.closest('del, s, strike, .a-text-strike, [data-a-strike="true"], .a-text-price, .basisPrice, [class*="strike" i], [class*="mrp" i]')) {
+        continue;
+      }
+      const txt = el.textContent?.trim().replace(/\s+/g, " ") || "";
+      const match = txt.match(/[\d,]+(?:\.\d+)?/);
+      if (match) {
+        const num = parseFloat(match[0].replace(/,/g, ""));
+        if (!isNaN(num) && num > 0) {
+          const formatted = txt.startsWith("₹") || txt.startsWith("$") ? txt : `₹${match[0]}`;
+          validCandidates.push({ priceText: formatted, priceNum: num });
+        }
+      }
+    }
+
+    if (validCandidates.length > 0) {
+      // Return the lowest valid non-strikethrough selling price (since M.R.P. is higher)
+      validCandidates.sort((a, b) => a.priceNum - b.priceNum);
+      return validCandidates[0].priceText;
+    }
+  } catch {}
+
+  return undefined;
+}
+
 function findCardContext(element: Element): { price?: string; title?: string } {
   try {
     const card = element.closest(
@@ -245,17 +318,8 @@ function findCardContext(element: Element): { price?: string; title?: string } {
     );
     if (!card) return {};
 
-    // 1. Extract accurate current selling price (excluding strikethrough/MRP)
-    let price: string | undefined = undefined;
-    const priceEl = card.querySelector(
-      '.a-price:not(.a-text-price) .a-offscreen, .a-price:not(.a-text-price) .a-price-whole, [data-a-color="price"]:not(.a-text-price), .Nx9bqj, ._30jeq3, span[class*="price" i]:not([class*="strike" i]):not([class*="mrp" i])'
-    );
-    if (priceEl && priceEl.textContent) {
-      const txt = priceEl.textContent.trim().replace(/\s+/g, " ");
-      if (txt && /[\d,]+/.test(txt)) {
-        price = txt.startsWith("₹") || txt.startsWith("$") ? txt : `₹${txt}`;
-      }
-    }
+    // 1. Extract accurate current selling price (strictly excluding strikethrough/MRP)
+    const price = extractCleanPrice(card);
 
     // 2. Extract product title inside the same card
     let title: string | undefined = undefined;
@@ -420,13 +484,7 @@ export function detectProductContext(doc: Document = typeof document !== "undefi
       '#buy-now-button, input[name="submit.buy-now"], button[name="submit.buy-now"], button._2KpZ6l._2U9uOA._12ko4O, button[class*="buy-now" i], [id*="buy-now" i], [aria-label*="Buy Now" i]'
     );
 
-    let currentPriceText: string | undefined = undefined;
-    const priceEl = doc.querySelector(
-      '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen, #corePrice_desktop .a-price-whole, .priceToPay .a-price-whole, .apexPriceToPay .a-offscreen, #priceblock_ourprice, #priceblock_dealprice, span.a-price span.a-offscreen, ._30jeq3._16Jk6d, [class*="priceToPay" i], .product-price'
-    );
-    if (priceEl && priceEl.textContent) {
-      currentPriceText = priceEl.textContent.trim().replace(/\s+/g, " ");
-    }
+    let currentPriceText = extractCleanPrice(doc.body || doc.documentElement);
 
     const inStockEl = doc.querySelector('#availability, .availability, [id*="availability" i]');
     const isOutOfStock = inStockEl && /currently unavailable|out of stock/i.test(inStockEl.textContent || "");
@@ -449,11 +507,10 @@ export function detectProductContext(doc: Document = typeof document !== "undefi
     if (searchResultCards.length > 0) {
       searchResultCards.forEach((card) => {
         const titleLink = card.querySelector('h2 a, a.a-link-normal.s-underline-text, a[href*="/dp/"], a[class*="product" i]');
-        const cardPriceEl = card.querySelector('.a-price .a-offscreen, .a-price-whole, ._30jeq3');
+        const price = extractCleanPrice(card);
         if (titleLink) {
           const nodeId = titleLink.getAttribute("data-difm-id") || "";
           const title = titleLink.textContent?.trim().replace(/\s+/g, " ") || "";
-          const price = cardPriceEl?.textContent?.trim().replace(/\s+/g, " ");
           let num: number | undefined = undefined;
           if (price) {
             const m = price.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
