@@ -2321,41 +2321,37 @@ export function App() {
     return draft;
   };
 
-  const handleUpdateNoteDraftField = (field: string, value: any) => {
-    if (!activeNoteDraft) return;
-    const updated = { ...activeNoteDraft, [field]: value };
-    let missing = [...(updated.missingFields || [])];
-    if (field === "consumerNumber" && value && value.trim()) {
-      missing = missing.filter((f) => f !== "consumerNumber");
-    }
-    if (field === "providerName" && value && value.trim()) {
-      missing = missing.filter((f) => f !== "providerName");
-    }
-    if (field === "dueAmount" && value && value.trim()) {
-      missing = missing.filter((f) => f !== "dueAmount");
-    }
-    if (field === "dueDate" && value && value.trim()) {
-      missing = missing.filter((f) => f !== "dueDate");
-    }
-    if (field === "targetUrl" && value && value.trim()) {
-      missing = missing.filter((f) => f !== "targetUrl");
-    }
-    updated.missingFields = missing;
-    setActiveNoteDraft(updated);
+  const handleUpdateNoteDraftFields = (fields: Record<string, any>) => {
+    setActiveNoteDraft((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...fields };
+      let missing = [...(updated.missingFields || [])];
+      for (const [field, value] of Object.entries(fields)) {
+        if (typeof value === "string" && value.trim()) {
+          missing = missing.filter((f) => f !== field);
+        }
+      }
+      updated.missingFields = missing;
 
-    if (activeNoteId) {
-      setSavedNotes((prev) =>
-        prev.map((n) =>
-          n.id === activeNoteId
-            ? {
-                ...n,
-                status: missing.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT",
-                parsedDraft: updated
-              }
-            : n
-        )
-      );
-    }
+      if (activeNoteId) {
+        setSavedNotes((notes) =>
+          notes.map((n) =>
+            n.id === activeNoteId
+              ? {
+                  ...n,
+                  status: missing.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT",
+                  parsedDraft: updated
+                }
+              : n
+          )
+        );
+      }
+      return updated;
+    });
+  };
+
+  const handleUpdateNoteDraftField = (field: string, value: any) => {
+    handleUpdateNoteDraftFields({ [field]: value });
   };
 
   const handleToggleUrlAttach = async () => {
@@ -4050,10 +4046,12 @@ export function App() {
                           <span class={`absolute left-2.5 top-1.5 text-xs font-mono font-bold ${currentAccentStyles.textHighlight || "accent-text"}`}>₹</span>
                           <input
                             type="number"
-                            value={activeNoteDraft.priceCondition?.targetPrice || ""}
+                            value={activeNoteDraft.priceCondition?.targetPrice ?? ""}
                             placeholder="e.g. 19999"
                             onInput={(e) => {
-                              const val = parseFloat((e.target as HTMLInputElement).value);
+                              const raw = (e.target as HTMLInputElement).value;
+                              const val = raw === "" ? undefined : parseFloat(raw);
+                              const numVal = val !== undefined && !isNaN(val) ? val : undefined;
                               const updatedCond = {
                                 ...(activeNoteDraft.priceCondition || {
                                   currency: "INR",
@@ -4062,12 +4060,12 @@ export function App() {
                                   autoProceedToCheckout: true,
                                   priceMatched: false
                                 }),
-                                targetPrice: isNaN(val) ? undefined : val
+                                targetPrice: numVal
                               };
-                              handleUpdateNoteDraftField("priceCondition", updatedCond);
-                              if (!isNaN(val)) {
-                                handleUpdateNoteDraftField("dueAmount", `₹${val.toLocaleString("en-IN")}`);
-                              }
+                              handleUpdateNoteDraftFields({
+                                priceCondition: updatedCond,
+                                dueAmount: numVal !== undefined ? `₹${numVal.toLocaleString("en-IN")}` : activeNoteDraft.dueAmount
+                              });
                             }}
                             class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.12] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-color)] font-mono"
                           />
@@ -4082,10 +4080,12 @@ export function App() {
                           <span class="absolute left-2.5 top-1.5 text-xs text-zinc-500 font-mono">₹</span>
                           <input
                             type="number"
-                            value={activeNoteDraft.priceCondition?.currentPrice || ""}
+                            value={activeNoteDraft.priceCondition?.currentPrice ?? ""}
                             placeholder="e.g. 24999"
                             onInput={(e) => {
-                              const val = parseFloat((e.target as HTMLInputElement).value);
+                              const raw = (e.target as HTMLInputElement).value;
+                              const val = raw === "" ? undefined : parseFloat(raw);
+                              const numVal = val !== undefined && !isNaN(val) ? val : undefined;
                               const updatedCond = {
                                 ...(activeNoteDraft.priceCondition || {
                                   currency: "INR",
@@ -4094,7 +4094,7 @@ export function App() {
                                   autoProceedToCheckout: true,
                                   priceMatched: false
                                 }),
-                                currentPrice: isNaN(val) ? undefined : val
+                                currentPrice: numVal
                               };
                               handleUpdateNoteDraftField("priceCondition", updatedCond);
                             }}
