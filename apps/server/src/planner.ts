@@ -62,18 +62,19 @@ CORE CAPABILITIES & EXECUTION RULES:
     - DO NOT SCROLL on the homepage.
     - Locate the search input (e.g. "Search Amazon.in", "Search for Products", searchbox) and TYPE the exact product name (e.g. "Sony WH-1000XM5").
     - Then CLICK the Search / Submit button (e.g. "Go", "Search").
-  * On search results pages:
-    - Carefully scan the interactive elements for the product title link matching the EXACT model name (e.g. "Sony WH-1000XM5...").
-    - NEVER select, click, or add unrelated models, different series, or sponsored ads (e.g. DO NOT click "WH-ULT900N" or "XM4" when the user asked for "XM5").
-    - CLICK the verified product title link IMMEDIATELY to open its dedicated product page.
-  * On the dedicated product page:
-    - Check the "E-COMMERCE PRODUCT PAGE CONTEXT" header if present to immediately read DETECTED CURRENT PRICE and ADD TO CART ACTION targetId.
-    - Compare live price against the user's target threshold (e.g. ₹29,990 vs ₹30,000).
-    - If live price <= target price (e.g. ₹29,990 <= ₹30,000):
-      -> In Step 1, IMMEDIATELY output CLICK on the "Add to Cart" button (e.g. the node ID indicated in ADD TO CART ACTION or the primary Add to Cart button). DO NOT SCROLL.
-      -> Once added to cart or if already clicked, output COMPLETE or REQUEST_APPROVAL with summary: "Price condition met: Found [Product] at ₹[Price] (under target ₹[Target]). Item added to cart and ready at checkout."
+  * On search results pages or product cards:
+    - Match the EXACT product model requested (e.g. "Sony WH-1000XM5").
+    - Read ONLY the '[Current Price: ...]' or price attached to that EXACT matching product (e.g. ₹28,990).
+    - NEVER read prices from other products, adjacent models, or sponsored items (e.g. DO NOT read XM6 at ₹49,900 when tracking XM5).
+    - If live price <= target price (e.g. ₹28,990 <= ₹29,999):
+      -> CLICK the matching "Add to cart" button (e.g. BUTTON "Add to cart" [for "Sony WH-1000XM5..." at ₹28,990]) or click the matching product title link.
+      -> Advance to cart/checkout and output COMPLETE or REQUEST_APPROVAL with summary: "Price condition met: Found [Product] at ₹[Price] (under target ₹[Target]). Item added to cart and ready at checkout."
     - If live price > target price:
       -> DO NOT add to cart. Output COMPLETE with summary: "Found [Product] currently at ₹[Price] (above target ₹[Target]). Item not added to cart. Monitoring active."
+  * On dedicated product pages:
+    - Locate the live price (e.g. ₹28,990) and compare with target.
+    - If price <= target: Click "Add to Cart" or "Buy Now" immediately.
+    - If price > target: Do not add to cart and report status.
 
 6. PROHIBITED ACTIONS & LOOP PREVENTION:
 - NEVER output REQUEST_USER_INPUT to ask the user for public webpage information (such as product price, stock status, or bill amount). As an autonomous agent, you must inspect the elements and read the price from the webpage yourself.

@@ -238,24 +238,39 @@ function isSocialElement(element: Element, href?: string, name?: string): boolea
   return SOCIAL_KEYWORDS.some((kw) => fullContext.includes(kw));
 }
 
-function findPriceNearElement(element: Element): string | undefined {
+function findCardContext(element: Element): { price?: string; title?: string } {
   try {
     const card = element.closest(
-      '[data-component-type="s-search-result"], .s-result-item, [data-asin]:not([data-asin=""]), .product-card, .s-card-container, div[data-id], ._1AtVbE, .product-item'
+      '[data-component-type="s-search-result"], .s-result-item, [data-asin]:not([data-asin=""]), .product-card, .s-card-container, div[data-id], ._1AtVbE, .product-item, .s-result-card'
     );
-    if (card) {
-      const priceEl = card.querySelector(
-        '.a-price .a-offscreen, .a-price-whole, [data-a-color="price"], .a-price, ._30jeq3, [class*="price" i]'
-      );
-      if (priceEl && priceEl.textContent) {
-        const txt = priceEl.textContent.trim().replace(/\s+/g, " ");
-        if (txt && /[\d,]+/.test(txt)) {
-          return txt;
-        }
+    if (!card) return {};
+
+    // 1. Extract accurate current selling price (excluding strikethrough/MRP)
+    let price: string | undefined = undefined;
+    const priceEl = card.querySelector(
+      '.a-price:not(.a-text-price) .a-offscreen, .a-price:not(.a-text-price) .a-price-whole, [data-a-color="price"]:not(.a-text-price), .Nx9bqj, ._30jeq3, span[class*="price" i]:not([class*="strike" i]):not([class*="mrp" i])'
+    );
+    if (priceEl && priceEl.textContent) {
+      const txt = priceEl.textContent.trim().replace(/\s+/g, " ");
+      if (txt && /[\d,]+/.test(txt)) {
+        price = txt.startsWith("₹") || txt.startsWith("$") ? txt : `₹${txt}`;
       }
     }
-  } catch {}
-  return undefined;
+
+    // 2. Extract product title inside the same card
+    let title: string | undefined = undefined;
+    const titleEl = card.querySelector('h2 a, h2 span, .a-size-medium, .a-size-base-plus, ._4rR01T, .KzDlHZ, a[class*="title" i]');
+    if (titleEl && titleEl.textContent) {
+      const t = titleEl.textContent.trim().replace(/\s+/g, " ");
+      if (t.length > 5) {
+        title = t.length > 60 ? t.slice(0, 57) + "..." : t;
+      }
+    }
+
+    return { price, title };
+  } catch {
+    return {};
+  }
 }
 
 export function extractSemanticNodes(root: Element = document.body): SemanticNode[] {
@@ -279,11 +294,15 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
         return;
       }
 
-      // Associate contextual price for e-commerce search cards (Amazon, Flipkart, etc.)
+      // Associate contextual price and product info for e-commerce search cards
       if (role === "link" || role === "button") {
-        const nearbyPrice = findPriceNearElement(node);
-        if (nearbyPrice && !name.includes(nearbyPrice)) {
-          name = `${name} [Price: ${nearbyPrice}]`;
+        const { price: cardPrice, title: cardTitle } = findCardContext(node);
+        if (cardPrice) {
+          if (role === "button" && (name.toLowerCase().includes("add to cart") || name.toLowerCase().includes("buy"))) {
+            name = `${name} [for "${cardTitle || "product"}" at ${cardPrice}]`;
+          } else if (!name.includes(cardPrice)) {
+            name = `${name} [Current Price: ${cardPrice}]`;
+          }
         }
       }
 
