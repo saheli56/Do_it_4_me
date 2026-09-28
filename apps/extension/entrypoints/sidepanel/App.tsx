@@ -1495,6 +1495,17 @@ export function App() {
                 }
 
                 if (res?.observation && msg.taskId) {
+                  // If observation has fewer than 8 nodes and action was a CLICK or NAVIGATE,
+                  // the browser is in mid-navigation/page reload! Capture fresh observation with retry.
+                  const nodeCount = res.observation.interactiveNodes?.length || 0;
+                  if (nodeCount < 8 && (msg.action.type === "CLICK" || msg.action.type === "NAVIGATE")) {
+                    setLogs((prev) => [...prev, `Page navigating / loading... Capturing fresh state...`]);
+                    if (activeTabId) {
+                      captureTabObservationWithRetry(activeTabId, msg.taskId, 8, 450);
+                    }
+                    return;
+                  }
+
                   const nextObsMsg: ExtensionMessage = {
                     type: "OBSERVATION_CAPTURED",
                     taskId: msg.taskId,
@@ -1503,7 +1514,7 @@ export function App() {
                   sendExtensionMessage(nextObsMsg);
                   setLogs((prev) => [
                     ...prev,
-                    `Page observed (${res.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
+                    `Page observed (${nodeCount} interactive elements). Planning next step...`
                   ]);
                 } else if (msg.taskId && activeTabId) {
                   captureTabObservationWithRetry(activeTabId, msg.taskId);
