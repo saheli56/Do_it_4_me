@@ -60,8 +60,8 @@ CORE CAPABILITIES & EXECUTION RULES:
 - When the goal specifies buying or tracking a specific product model (e.g. "Sony WH-1000XM5" or "Sony WH-1000XM4"):
   * If currently on a store homepage (e.g. amazon.in, flipkart.com, myntra.com):
     - DO NOT SCROLL on the homepage.
-    - Locate the search input (e.g. "Search Amazon.in", "Search for Products", searchbox) and TYPE the exact product name (e.g. "Sony WH-1000XM5").
-    - Then CLICK the Search / Submit button (e.g. "Go", "Search").
+    - Locate the search input (e.g. "Search Amazon.in", "Search for Products", searchbox, input matching search) and TYPE the exact product name (e.g. "Sony WH-1000XM5").
+    - Then CLICK the Search / Submit button (e.g. "Go", "Search", submit).
   * On search results pages or product cards:
     - Match the EXACT product model requested (e.g. "Sony WH-1000XM5").
     - Read ONLY the '[Current Price: ...]' or price attached to that EXACT matching product (e.g. ₹28,990).
@@ -78,6 +78,8 @@ CORE CAPABILITIES & EXECUTION RULES:
     - If price > target: Do not add to cart and report status.
 
 6. PROHIBITED ACTIONS & LOOP PREVENTION:
+- NEVER output a WAIT action for long intervals (e.g. minutes or hours) or to schedule future checks. All actions must execute immediately in real time. If on a store homepage, always search for the product immediately.
+- MAXIMUM WAIT duration is 3000ms (only for brief UI animation/load settlement). NEVER emit durationMs > 3000.
 - NEVER output REQUEST_USER_INPUT to ask the user for public webpage information (such as product price, stock status, or bill amount). As an autonomous agent, you must inspect the elements and read the price from the webpage yourself.
 - ONLY output REQUEST_USER_INPUT for private missing user credentials (e.g. Consumer Account ID, 2FA OTP).
 - NEVER enter a loop of repeated SCROLL or REQUEST_USER_INPUT. If on a search page and a product link is visible, CLICK it. If on a homepage, TYPE into the search input.
@@ -343,12 +345,14 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
           url: raw.url || observation.url,
           description: raw.description
         };
-      case "WAIT":
+      case "WAIT": {
+        const duration = Math.min(Math.max(100, Number(raw.durationMs) || 1000), 3000);
         return {
           type: "WAIT",
-          durationMs: raw.durationMs || 1000,
+          durationMs: duration,
           reason: raw.description
         };
+      }
       case "REQUEST_APPROVAL":
         return {
           type: "REQUEST_APPROVAL",

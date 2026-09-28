@@ -294,7 +294,8 @@ export async function executeAgentAction(
       }
 
       case "WAIT": {
-        await new Promise((r) => setTimeout(r, action.durationMs));
+        const duration = Math.min(Math.max(100, Number(action.durationMs) || 1000), 3000);
+        await new Promise((r) => setTimeout(r, duration));
         return { success: true };
       }
 
