@@ -327,7 +327,7 @@ function findCardContext(element: Element): { price?: string; title?: string } {
     if (titleEl && titleEl.textContent) {
       const t = titleEl.textContent.trim().replace(/\s+/g, " ");
       if (t.length > 5) {
-        title = t.length > 60 ? t.slice(0, 57) + "..." : t;
+        title = t.length > 140 ? t.slice(0, 137) + "..." : t;
       }
     }
 
@@ -618,7 +618,7 @@ export function formatSemanticTreeForPrompt(
   for (const n of selectedNodes) {
     let desc = `[${n.id}] ${n.role.toUpperCase()}`;
     if (n.name) {
-      const cleanName = n.name.length > 90 ? n.name.slice(0, 87) + "..." : n.name;
+      const cleanName = n.name.length > 140 ? n.name.slice(0, 137) + "..." : n.name;
       desc += ` "${cleanName}"`;
     }
     if (n.value) {
