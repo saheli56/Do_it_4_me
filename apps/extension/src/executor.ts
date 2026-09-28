@@ -173,6 +173,13 @@ export async function executeAgentAction(
         if (!el) {
           return { success: false, error: `Target element not found: ${action.target.name || action.target.selector}` };
         }
+
+        // Prevent target="_blank" from opening a new detached tab that breaks the agent loop
+        const anchor = el.tagName === "A" ? (el as HTMLAnchorElement) : (el.closest?.("a") as HTMLAnchorElement | null);
+        if (anchor && anchor.getAttribute("target") === "_blank") {
+          anchor.setAttribute("target", "_self");
+        }
+
         await highlightElement(el, `Clicking "${action.target.name || 'target'}"`);
         if ("focus" in el && typeof (el as { focus: () => void }).focus === "function") {
           (el as { focus: () => void }).focus();

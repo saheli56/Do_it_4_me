@@ -1,5 +1,5 @@
 import { defineContentScript } from "wxt/sandbox";
-import { extractSemanticNodes, detectSecurityChallenge } from "@difm/a11y-tree";
+import { extractSemanticNodes, detectSecurityChallenge, detectProductContext } from "@difm/a11y-tree";
 import type { PageObservation, AgentAction } from "@difm/shared";
 import { executeAgentAction } from "../src/executor.js";
 
@@ -10,11 +10,13 @@ export default defineContentScript({
       if (message.type === "CAPTURE_OBSERVATION") {
         const nodes = extractSemanticNodes(document.body);
         const securityChallenge = detectSecurityChallenge(document);
+        const productContext = detectProductContext(document);
         const observation: PageObservation = {
           url: window.location.href,
           title: document.title,
           interactiveNodes: nodes,
           securityChallenge,
+          productContext,
           timestamp: Date.now()
         };
         sendResponse({ success: true, observation });
@@ -22,14 +24,16 @@ export default defineContentScript({
         const action = message.action as AgentAction;
         executeAgentAction(action).then(async (res) => {
           // Allow DOM to settle and capture fresh observation
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 150));
           const nodes = extractSemanticNodes(document.body);
           const securityChallenge = detectSecurityChallenge(document);
+          const productContext = detectProductContext(document);
           const observation: PageObservation = {
             url: window.location.href,
             title: document.title,
             interactiveNodes: nodes,
             securityChallenge,
+            productContext,
             timestamp: Date.now()
           };
           sendResponse({ ...res, observation });

@@ -238,6 +238,26 @@ function isSocialElement(element: Element, href?: string, name?: string): boolea
   return SOCIAL_KEYWORDS.some((kw) => fullContext.includes(kw));
 }
 
+function findPriceNearElement(element: Element): string | undefined {
+  try {
+    const card = element.closest(
+      '[data-component-type="s-search-result"], .s-result-item, [data-asin]:not([data-asin=""]), .product-card, .s-card-container, div[data-id], ._1AtVbE, .product-item'
+    );
+    if (card) {
+      const priceEl = card.querySelector(
+        '.a-price .a-offscreen, .a-price-whole, [data-a-color="price"], .a-price, ._30jeq3, [class*="price" i]'
+      );
+      if (priceEl && priceEl.textContent) {
+        const txt = priceEl.textContent.trim().replace(/\s+/g, " ");
+        if (txt && /[\d,]+/.test(txt)) {
+          return txt;
+        }
+      }
+    }
+  } catch {}
+  return undefined;
+}
+
 export function extractSemanticNodes(root: Element = document.body): SemanticNode[] {
   const results: SemanticNode[] = [];
   let nodeIdCounter = 1;
@@ -252,12 +272,21 @@ export function extractSemanticNodes(root: Element = document.body): SemanticNod
 
     if (isInteractive) {
       const rawHref = node.tagName === "A" ? node.getAttribute("href") || undefined : undefined;
-      const name = getAccessibleName(node);
+      let name = getAccessibleName(node);
 
       // Completely filter out social media links/buttons/icons so the agent never gets distracted
       if (isSocialElement(node, rawHref, name)) {
         return;
       }
+
+      // Associate contextual price for e-commerce search cards (Amazon, Flipkart, etc.)
+      if (role === "link" || role === "button") {
+        const nearbyPrice = findPriceNearElement(node);
+        if (nearbyPrice && !name.includes(nearbyPrice)) {
+          name = `${name} [Price: ${nearbyPrice}]`;
+        }
+      }
+
       const selector = generateStableSelector(node);
 
       let bounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -357,9 +386,111 @@ export function detectSecurityChallenge(doc: Document = typeof document !== "und
   return undefined;
 }
 
-export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 140, maxChars = 11000): string {
+export function detectProductContext(doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)): import("@difm/shared").ProductContext | undefined {
+  if (!doc) return undefined;
+
+  try {
+    // 1. Check if dedicated product details page (Amazon / Flipkart / generic e-commerce)
+    const productTitleEl = doc.querySelector(
+      '#productTitle, h1.a-size-large, span.B_NuCI, .product-title, h1[class*="product" i], h1[class*="title" i]'
+    );
+    const addToCartEl = doc.querySelector(
+      '#add-to-cart-button, #add-to-cart-button-ubb, input[name="submit.add-to-cart"], button[name="submit.add-to-cart"], button._2KpZ6l._2U9uOA._3v1-ww, button[class*="add-to-cart" i], [id*="add-to-cart" i], [aria-label*="Add to Cart" i]'
+    );
+    const buyNowEl = doc.querySelector(
+      '#buy-now-button, input[name="submit.buy-now"], button[name="submit.buy-now"], button._2KpZ6l._2U9uOA._12ko4O, button[class*="buy-now" i], [id*="buy-now" i], [aria-label*="Buy Now" i]'
+    );
+
+    let currentPriceText: string | undefined = undefined;
+    const priceEl = doc.querySelector(
+      '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen, #corePrice_desktop .a-price-whole, .priceToPay .a-price-whole, .apexPriceToPay .a-offscreen, #priceblock_ourprice, #priceblock_dealprice, span.a-price span.a-offscreen, ._30jeq3._16Jk6d, [class*="priceToPay" i], .product-price'
+    );
+    if (priceEl && priceEl.textContent) {
+      currentPriceText = priceEl.textContent.trim().replace(/\s+/g, " ");
+    }
+
+    const inStockEl = doc.querySelector('#availability, .availability, [id*="availability" i]');
+    const isOutOfStock = inStockEl && /currently unavailable|out of stock/i.test(inStockEl.textContent || "");
+
+    const addToCartNodeId = addToCartEl ? addToCartEl.getAttribute("data-difm-id") || undefined : undefined;
+    const buyNowNodeId = buyNowEl ? buyNowEl.getAttribute("data-difm-id") || undefined : undefined;
+
+    let priceNumber: number | undefined = undefined;
+    if (currentPriceText) {
+      const numMatch = currentPriceText.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+      if (numMatch) priceNumber = parseFloat(numMatch[1]);
+    }
+
+    // 2. Search results page check
+    const searchResultCards = doc.querySelectorAll(
+      '[data-component-type="s-search-result"], .s-result-item[data-asin]:not([data-asin=""]), div[data-id]'
+    );
+    const searchResults: Array<{ nodeId: string; title: string; price?: string; priceNumber?: number }> = [];
+
+    if (searchResultCards.length > 0) {
+      searchResultCards.forEach((card) => {
+        const titleLink = card.querySelector('h2 a, a.a-link-normal.s-underline-text, a[href*="/dp/"], a[class*="product" i]');
+        const cardPriceEl = card.querySelector('.a-price .a-offscreen, .a-price-whole, ._30jeq3');
+        if (titleLink) {
+          const nodeId = titleLink.getAttribute("data-difm-id") || "";
+          const title = titleLink.textContent?.trim().replace(/\s+/g, " ") || "";
+          const price = cardPriceEl?.textContent?.trim().replace(/\s+/g, " ");
+          let num: number | undefined = undefined;
+          if (price) {
+            const m = price.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+            if (m) num = parseFloat(m[1]);
+          }
+          if (nodeId && title) {
+            searchResults.push({ nodeId, title, price, priceNumber: num });
+          }
+        }
+      });
+    }
+
+    if (productTitleEl || addToCartEl || currentPriceText || searchResults.length > 0) {
+      return {
+        productTitle: productTitleEl?.textContent?.trim().replace(/\s+/g, " ") || undefined,
+        price: currentPriceText,
+        priceNumber,
+        currency: currentPriceText?.includes("₹") ? "INR" : currentPriceText?.includes("$") ? "USD" : undefined,
+        inStock: !isOutOfStock,
+        addToCartNodeId,
+        buyNowNodeId,
+        searchResults: searchResults.length > 0 ? searchResults.slice(0, 15) : undefined
+      };
+    }
+  } catch {}
+
+  return undefined;
+}
+
+export function formatSemanticTreeForPrompt(
+  nodes: SemanticNode[],
+  maxNodes = 140,
+  maxChars = 11000,
+  productContext?: import("@difm/shared").ProductContext
+): string {
+  const headerLines: string[] = [];
+
+  if (productContext) {
+    if (productContext.productTitle || productContext.price) {
+      headerLines.push("=== E-COMMERCE PRODUCT PAGE CONTEXT ===");
+      if (productContext.productTitle) headerLines.push(`* DETECTED PRODUCT: ${productContext.productTitle}`);
+      if (productContext.price) headerLines.push(`* DETECTED CURRENT PRICE: ${productContext.price} (${productContext.inStock ? "IN STOCK" : "OUT OF STOCK"})`);
+      if (productContext.addToCartNodeId) headerLines.push(`* ADD TO CART ACTION: [${productContext.addToCartNodeId}] BUTTON "Add to Cart"`);
+      if (productContext.buyNowNodeId) headerLines.push(`* BUY NOW ACTION: [${productContext.buyNowNodeId}] BUTTON "Buy Now"`);
+      headerLines.push("========================================");
+    } else if (productContext.searchResults && productContext.searchResults.length > 0) {
+      headerLines.push("=== SEARCH RESULTS MATCHES ===");
+      for (const res of productContext.searchResults.slice(0, 8)) {
+        headerLines.push(`* [${res.nodeId}] "${res.title}" -> Price: ${res.price || "N/A"}`);
+      }
+      headerLines.push("==============================");
+    }
+  }
+
   if (!nodes || nodes.length === 0) {
-    return "No interactive elements detected on page.";
+    return headerLines.length > 0 ? headerLines.join("\n") + "\n\nNo other interactive elements detected on page." : "No interactive elements detected on page.";
   }
 
   // Segment elements so product/content links aren't starved out by 100+ sidebar filter checkboxes
@@ -388,6 +519,15 @@ export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 14
     }
   }
 
+  // Prioritize primary action buttons like Add to Cart
+  buttons.sort((a, b) => {
+    const aName = (a.name || "").toLowerCase();
+    const bName = (b.name || "").toLowerCase();
+    const aPri = aName.includes("cart") || aName.includes("buy") || aName.includes("pay") || aName.includes("submit") ? 1 : 0;
+    const bPri = bName.includes("cart") || bName.includes("buy") || bName.includes("pay") || bName.includes("submit") ? 1 : 0;
+    return bPri - aPri;
+  });
+
   // Allocate slots fairly
   const selectedNodes: SemanticNode[] = [
     ...inputs.slice(0, 25),
@@ -396,8 +536,8 @@ export function formatSemanticTreeForPrompt(nodes: SemanticNode[], maxNodes = 14
     ...otherControls.slice(0, 20)
   ];
 
-  const lines: string[] = [];
-  let totalLen = 0;
+  const lines: string[] = headerLines.length > 0 ? [...headerLines, ""] : [];
+  let totalLen = lines.join("\n").length;
 
   for (const n of selectedNodes) {
     let desc = `[${n.id}] ${n.role.toUpperCase()}`;

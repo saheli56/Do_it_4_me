@@ -67,11 +67,11 @@ CORE CAPABILITIES & EXECUTION RULES:
     - NEVER select, click, or add unrelated models, different series, or sponsored ads (e.g. DO NOT click "WH-ULT900N" or "XM4" when the user asked for "XM5").
     - CLICK the verified product title link IMMEDIATELY to open its dedicated product page.
   * On the dedicated product page:
-    - Locate the live price displayed (e.g. ₹29,799).
-    - Compare live price against the user's target threshold (e.g. ₹29,999).
-    - If live price <= target price (e.g. ₹29,799 is under ₹29,999):
-      -> CLICK the "Add to Cart" or "Buy Now" button.
-      -> Advance to cart/checkout and output COMPLETE or REQUEST_APPROVAL with summary: "Price condition met: Found [Product] at ₹[Price] (under target ₹[Target]). Item added to cart and ready at checkout."
+    - Check the "E-COMMERCE PRODUCT PAGE CONTEXT" header if present to immediately read DETECTED CURRENT PRICE and ADD TO CART ACTION targetId.
+    - Compare live price against the user's target threshold (e.g. ₹29,990 vs ₹30,000).
+    - If live price <= target price (e.g. ₹29,990 <= ₹30,000):
+      -> In Step 1, IMMEDIATELY output CLICK on the "Add to Cart" button (e.g. the node ID indicated in ADD TO CART ACTION or the primary Add to Cart button). DO NOT SCROLL.
+      -> Once added to cart or if already clicked, output COMPLETE or REQUEST_APPROVAL with summary: "Price condition met: Found [Product] at ₹[Price] (under target ₹[Target]). Item added to cart and ready at checkout."
     - If live price > target price:
       -> DO NOT add to cart. Output COMPLETE with summary: "Found [Product] currently at ₹[Price] (above target ₹[Target]). Item not added to cart. Monitoring active."
 
@@ -110,7 +110,9 @@ Respond with a SINGLE VALID JSON object in this exact schema:
 export function normalizeExtractedUrl(rawUrl?: string, textContext = ""): string | undefined {
   if (rawUrl && rawUrl.trim()) {
     let url = rawUrl.trim().replace(/[\.,;:)]+$/, "");
-    url = url.replace(/cesc\.(con|coin|co\b)/i, "cesc.co.in");
+    if (/cesc\.(con|coin|co\.in|co|in|com)/i.test(url) || url.toLowerCase().includes("cesc.")) {
+      return "https://www.cesc.co.in";
+    }
     url = url.replace(/\.(con)\b/i, ".com");
     url = url.replace(/\.coin\b/i, ".co.in");
     
@@ -168,7 +170,12 @@ export class PlannerService {
 
     // Helper to build user prompt with variable tree detail level
     const buildUserPrompt = (maxNodes = 80, maxChars = 6000) => {
-      const tree = formatSemanticTreeForPrompt(observation.interactiveNodes, maxNodes, maxChars);
+      const tree = formatSemanticTreeForPrompt(
+        observation.interactiveNodes,
+        maxNodes,
+        maxChars,
+        observation.productContext
+      );
       return `
 USER GOAL: "${goal}"
 CURRENT URL: ${observation.url}
