@@ -4,4 +4,4 @@ packages:
 allowBuilds:
   esbuild: true
   spawn-sync: true
-  tesseract.js: set this to true or false
+  tesseract.js: true

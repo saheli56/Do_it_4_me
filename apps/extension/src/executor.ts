@@ -162,6 +162,71 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 250): Pr
   });
 }
 
+export function simulateRealClick(element: HTMLElement | Element): void {
+  const doc = element.ownerDocument || document;
+  const win = doc.defaultView || window;
+  let clientX = 0;
+  let clientY = 0;
+
+  if (typeof element.getBoundingClientRect === "function") {
+    const rect = element.getBoundingClientRect();
+    clientX = rect.left + rect.width / 2;
+    clientY = rect.top + rect.height / 2;
+  }
+
+  const events = ["pointerdown", "mousedown", "focus", "pointerup", "mouseup", "click"];
+  for (const eventName of events) {
+    let evt: Event;
+    if (eventName.startsWith("pointer") && typeof PointerEvent !== "undefined") {
+      evt = new PointerEvent(eventName, {
+        bubbles: true,
+        cancelable: true,
+        view: win,
+        clientX,
+        clientY,
+        pointerType: "mouse"
+      });
+    } else if ((eventName.startsWith("mouse") || eventName === "click") && typeof MouseEvent !== "undefined") {
+      evt = new MouseEvent(eventName, {
+        bubbles: true,
+        cancelable: true,
+        view: win,
+        clientX,
+        clientY,
+        buttons: eventName.includes("down") ? 1 : 0
+      });
+    } else {
+      evt = new Event(eventName, { bubbles: true, cancelable: true });
+    }
+    element.dispatchEvent(evt);
+  }
+
+  if (typeof (element as HTMLElement).click === "function") {
+    try {
+      (element as HTMLElement).click();
+    } catch {}
+  }
+
+  // If inside an Amazon button wrapper (.a-button), trigger click on wrapper as well
+  const parentBtn = element.closest(".a-button, .a-button-inner, [role='button'], button");
+  if (parentBtn && parentBtn !== element) {
+    if (typeof (parentBtn as HTMLElement).click === "function") {
+      try {
+        (parentBtn as HTMLElement).click();
+      } catch {}
+    }
+  }
+
+  // If this is an input submit inside a form (e.g. Amazon addToCart form)
+  if (element instanceof HTMLInputElement && element.type === "submit" && element.form) {
+    try {
+      if (typeof element.form.requestSubmit === "function") {
+        element.form.requestSubmit(element);
+      }
+    } catch {}
+  }
+}
+
 export async function executeAgentAction(
   action: AgentAction,
   doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)
@@ -173,23 +238,35 @@ export async function executeAgentAction(
         if (!el) {
           return { success: false, error: `Target element not found: ${action.target.name || action.target.selector}` };
         }
-
-        // Prevent target="_blank" from opening a new detached tab that breaks the agent loop
-        const anchor = el.tagName === "A" ? (el as HTMLAnchorElement) : (el.closest?.("a") as HTMLAnchorElement | null);
-        if (anchor && anchor.getAttribute("target") === "_blank") {
-          anchor.setAttribute("target", "_self");
-        }
-
         await highlightElement(el, `Clicking "${action.target.name || 'target'}"`);
+
         if ("focus" in el && typeof (el as { focus: () => void }).focus === "function") {
-          (el as { focus: () => void }).focus();
+          try {
+            (el as { focus: () => void }).focus();
+          } catch {}
         }
-        if (typeof (el as HTMLElement).click === "function") {
-          (el as HTMLElement).click();
-        } else if (typeof el.dispatchEvent === "function") {
-          el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        // Force links with target="_blank" to open in the current tab and trigger navigation
+        const anchor = (el.tagName === "A" ? el : el.closest("a")) as HTMLAnchorElement | null;
+        if (anchor && anchor.href && (anchor.href.startsWith("http://") || anchor.href.startsWith("https://"))) {
+          anchor.target = "_self";
+          anchor.removeAttribute("target");
+          const destHref = anchor.href;
+          try {
+            anchor.click();
+          } catch {}
+
+          if (doc.defaultView && doc.defaultView.location.href !== destHref) {
+            try {
+              doc.defaultView.location.href = destHref;
+            } catch {}
+          }
+          return { success: true, navigated: true };
+        } else {
+          simulateRealClick(el);
         }
-        await waitForSettlement(doc);
+
+        await waitForSettlement(doc, 400);
         return { success: true };
       }
 
@@ -294,8 +371,7 @@ export async function executeAgentAction(
       }
 
       case "WAIT": {
-        const duration = Math.min(Math.max(100, Number(action.durationMs) || 1000), 3000);
-        await new Promise((r) => setTimeout(r, duration));
+        await new Promise((r) => setTimeout(r, action.durationMs));
         return { success: true };
       }
 

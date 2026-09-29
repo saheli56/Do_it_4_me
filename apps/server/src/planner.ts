@@ -56,37 +56,37 @@ CORE CAPABILITIES & EXECUTION RULES:
   * On the payment form (e.g. "monthlybill.php"), locate the Consumer Number / Account ID input, enter the user's account number (e.g. 102938492019), fill email/mobile if requested, solve/request any captcha if needed, and submit to view the bill.
   * Advance through portal steps to reach the bill review or payment method screen.
   * Prefer selecting "UPI / QR Code" or "Scan to Pay" so the QR code appears directly on the user's screen.
-5. E-COMMERCE, PRODUCT SEARCH & EXACT MODEL MATCHING RULES:
-- When the goal specifies buying or tracking a specific product model (e.g. "Sony WH-1000XM5"):
-  * If currently on a store homepage (e.g. amazon.in, flipkart.com, myntra.com):
-    - DO NOT SCROLL on the homepage.
-    - Locate the search input (e.g. "Search Amazon.in", "Search for Products", searchbox, input matching search) and TYPE the exact product name (e.g. "Sony WH-1000XM5").
-    - Then CLICK the Search / Submit button (e.g. "Go", "Search", submit).
-  * On search results pages or product cards:
-    - CRITICAL MODEL DISAMBIGUATION:
-      * Check the full product title attached to each button/link.
-      * For Sony products:
-        - "WH-" (e.g. "WH-1000XM5", "WH-1000XM4") means Over-Ear Wireless Headphones.
-        - "WF-" (e.g. "WF-1000XM5", "WF-C700N") means In-Ear Wireless Earbuds.
-        - If the goal is "Sony WH-1000XM5", you MUST NEVER select "WF-1000XM5" (earbuds) and NEVER select "WH-1000XM6" or "WH-1000XM4" (different generations)!
-      * For Apple/Samsung/Laptops/Mobiles:
-        - Base vs Pro vs Max vs Plus vs Ultra must match the user goal exactly.
-      * NEVER click "Add to cart" or a product link on any card that does not match the exact requested model.
-    - Read ONLY the '[Current Price: ...]' or price attached to the EXACT matching product card (e.g. ₹28,990).
-    - If the exact matching product's live price <= target price:
-      -> In Step 1: CLICK the matching "Add to cart" button on that specific product card (e.g. BUTTON "Add to cart" [for "Sony WH-1000XM5..." at ₹28,990]) or click its title link.
-      -> Advance to cart/checkout and output COMPLETE or REQUEST_APPROVAL with summary: "Price condition met: Found [Exact Product] at ₹[Price] (under target ₹[Target]). Item added to cart and ready at checkout."
-    - If the exact matching product's live price > target price:
-      -> DO NOT add to cart. Output COMPLETE with summary: "Found [Exact Product] currently at ₹[Price] (above target ₹[Target]). Item not added to cart. Monitoring active."
-  * On dedicated product pages:
-    - Verify the product title matches the exact model.
-    - Locate the live price and compare with target.
-    - If price <= target: Click "Add to Cart" or "Buy Now" immediately.
-    - If price > target: Do not add to cart and report status.
+5. E-COMMERCE, PRODUCT SEARCH, PRICE DROP TRACKING & PURCHASE AUTOMATION:
+- When the goal specifies buying, adding to cart, or checking price drop conditions (e.g. "Automatically purchase/add to cart Sony XM5 headphones when price drops below ₹29,999", "check price and buy if under ₹X"):
+  * YOU ARE THE AUTOMATED AGENT EXECUTING THIS CHECK AND PURCHASE ON BEHALF OF THE USER.
+  * NEVER output FAIL claiming that "Amazon doesn't have an automated price drop alert feature" or "price drop alert is not a native website UI button". You must inspect the live store, find the product, check its live price, and execute the purchase if the condition is met!
+  * STEP-BY-STEP EXECUTION FLOW:
+    1. If on store homepage (e.g. amazon.in, flipkart.com):
+       - DO NOT SCROLL on homepage.
+       - Locate search textbox/searchbox (e.g. "Search Amazon.in", "twotabsearchtextbox") and TYPE the product query.
+       - Next step: CLICK Search/Go button.
+    2. If on search results page:
+       - Carefully check the product title links in the search results.
+       - If a matching product result is listed: CLICK its title link immediately to navigate to the product detail page.
+       - If no relevant product matching the user's query exists in the search results:
+         * Output COMPLETE with summary: "Product was not found in the search results on store. No item was added to cart."
+       - NEVER output COMPLETE claiming "Item added to cart" while still on the search results page!
+    3. If on the product detail page (e.g. URL has /dp/, or product title & Buy/Cart buttons are visible):
+       - Check the product title, and read the live price shown on the page (e.g. ₹39,990).
+       - Compare live price against the user's target price threshold (e.g. target ₹49,999):
+         * If live price <= target price:
+           -> If previous actions have NOT clicked "Add to Cart" or "Buy Now":
+              YOU MUST OUTPUT A "CLICK" ACTION ON THE "Add to Cart" or "Buy Now" BUTTON (targetId matching "Add to Cart" or "Buy Now").
+              DO NOT OUTPUT COMPLETE YET!
+           -> If previous actions ALREADY clicked "Add to Cart" OR the page is an upsell/cart/sidebar/confirmation overlay:
+              YOU MUST IMMEDIATELY OUTPUT COMPLETE with summary: "Price condition met: Found product at ₹[Price] (below target ₹[Target]). Item added to cart."
+              NEVER CLICK additional "Add to Cart" buttons for recommended, sponsored, related, or upsell products!
+         * If live price > target price: Condition is NOT met.
+           -> Output COMPLETE with summary: "Current price is ₹[Price], which is above the target price threshold of ₹[Target]. Item not added to cart."
+    4. If on the Cart / Confirmation / Checkout page (e.g. /cart, /gp/cart, or title containing "Shopping Cart"):
+       - Output COMPLETE immediately: "Item has been successfully added to the cart." Do NOT click further buttons.
 
 6. PROHIBITED ACTIONS & LOOP PREVENTION:
-- NEVER output a WAIT action for long intervals (e.g. minutes or hours) or to schedule future checks. All actions must execute immediately in real time. If on a store homepage, always search for the product immediately.
-- MAXIMUM WAIT duration is 3000ms (only for brief UI animation/load settlement). NEVER emit durationMs > 3000.
 - NEVER output REQUEST_USER_INPUT to ask the user for public webpage information (such as product price, stock status, or bill amount). As an autonomous agent, you must inspect the elements and read the price from the webpage yourself.
 - ONLY output REQUEST_USER_INPUT for private missing user credentials (e.g. Consumer Account ID, 2FA OTP).
 - NEVER enter a loop of repeated SCROLL or REQUEST_USER_INPUT. If on a search page and a product link is visible, CLICK it. If on a homepage, TYPE into the search input.
@@ -121,11 +121,15 @@ Respond with a SINGLE VALID JSON object in this exact schema:
 export function normalizeExtractedUrl(rawUrl?: string, textContext = ""): string | undefined {
   if (rawUrl && rawUrl.trim()) {
     let url = rawUrl.trim().replace(/[\.,;:)]+$/, "");
-    if (/cesc\.(con|coin|co\.in|co|in|com)/i.test(url) || url.toLowerCase().includes("cesc.")) {
-      return "https://www.cesc.co.in";
+    url = url.replace(/^https?:\/\//i, "");
+    
+    // Normalize any cesc typos (cesc.con, cesc.coin, cesc.co.in)
+    if (/^(www\.)?cesc\.(con|coin|co\.in|co|com)($|\/)/i.test(url)) {
+      url = url.replace(/^(www\.)?cesc\.(con|coin|co\.in|co|com)/i, "www.cesc.co.in");
+    } else {
+      url = url.replace(/\.con($|\/)/i, ".com$1");
+      url = url.replace(/\.coin($|\/)/i, ".co.in$1");
     }
-    url = url.replace(/\.(con)\b/i, ".com");
-    url = url.replace(/\.coin\b/i, ".co.in");
     
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       url = `https://${url}`;
@@ -163,30 +167,29 @@ export class PlannerService {
   ): Promise<AgentAction> {
     // Keep last 5 steps to prevent prompt explosion on long tasks
     const recentHistory = stepHistory.slice(-5);
+    const scrollCount = recentHistory.filter((s) => s.toUpperCase().includes("SCROLL")).length;
+    const loopWarning = scrollCount >= 2
+      ? "\n⚠️ NOTICE: You have already scrolled down multiple times. DO NOT SCROLL AGAIN. Inspect the interactive elements below and CLICK the matching product title, link, or button immediately."
+      : "";
+
     const historyPrompt =
       recentHistory.length > 0
-        ? `\nPREVIOUS ACTIONS TAKEN:\n${recentHistory.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
+        ? `\nPREVIOUS ACTIONS TAKEN:\n${recentHistory.map((s, i) => `${i + 1}. ${s}`).join("\n")}${loopWarning}`
         : "";
 
-    // Candidate models in preference order
+    // Candidate models in preference order from available Groq list
     const candidateModels = [
-      this.model,
-      "openai/gpt-oss-120b",
       "openai/gpt-oss-20b",
       "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
       "allam-2-7b"
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 
     let lastError: string = "";
 
     // Helper to build user prompt with variable tree detail level
-    const buildUserPrompt = (maxNodes = 80, maxChars = 6000) => {
-      const tree = formatSemanticTreeForPrompt(
-        observation.interactiveNodes,
-        maxNodes,
-        maxChars,
-        observation.productContext
-      );
+    const buildUserPrompt = (maxNodes = 60, maxChars = 3800) => {
+      const tree = formatSemanticTreeForPrompt(observation.interactiveNodes, maxNodes, maxChars);
       return `
 USER GOAL: "${goal}"
 CURRENT URL: ${observation.url}
@@ -201,7 +204,7 @@ ${tree}
 Analyze the user goal and the interactive elements, then output the next JSON action.`;
     };
 
-    let userMessage = buildUserPrompt(80, 6000);
+    let userMessage = buildUserPrompt(60, 3800);
 
     for (const modelToTry of candidateModels) {
       try {
@@ -213,30 +216,30 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: userMessage }
             ],
-            response_format: { type: "json_object" },
             temperature: 0.1,
-            max_tokens: 500
+            max_tokens: 1500
           });
           messageContent = response.choices[0]?.message?.content || "{}";
         } catch (apiErr: any) {
           const errStr = (apiErr?.message || "").toLowerCase();
-          const isLengthError = errStr.includes("reduce the length") || errStr.includes("too long") || errStr.includes("context") || errStr.includes("token");
+          const isTpdError = errStr.includes("tokens per day") || errStr.includes("tpd");
+          const isLengthError = !isTpdError && (errStr.includes("reduce the length") || errStr.includes("too long") || errStr.includes("context") || errStr.includes("token") || errStr.includes("rate limit") || errStr.includes("tpm"));
 
-          // If prompt was too large, retry with compact tree (30 nodes, 2500 chars)
+          // If prompt was too large (and not a daily account quota limit), retry with compact tree (40 nodes, 2600 chars)
           if (isLengthError) {
             console.warn(`Prompt length exceeded for ${modelToTry}, retrying with compressed semantic tree...`);
-            const compactUserMessage = buildUserPrompt(30, 2500);
+            const compactUserMessage = buildUserPrompt(40, 2600);
             const retryResponse = await this.client.chat.completions.create({
               model: modelToTry,
               messages: [
-                { role: "system", content: "You are the DIFM Web Action Planner. Respond ONLY in valid JSON matching: {\"action\": {\"type\": \"CLICK\"|\"TYPE\"|\"SELECT\"|\"COMPLETE\"|\"FAIL\", \"targetId\": \"...\", \"text\": \"...\", \"description\": \"...\"}}" },
+                { role: "system", content: "You are the DIFM Web Action Planner. Always respond with a valid JSON object matching: {\"action\": {\"type\": \"CLICK\"|\"TYPE\"|\"SELECT\"|\"COMPLETE\"|\"FAIL\", \"targetId\": \"...\", \"text\": \"...\", \"description\": \"...\"}}" },
                 { role: "user", content: compactUserMessage }
               ],
               temperature: 0.1,
-              max_tokens: 350
+              max_tokens: 1500
             });
             messageContent = retryResponse.choices[0]?.message?.content || "{}";
-          } else if (apiErr?.status === 400 || errStr.includes("json")) {
+          } else if (!isTpdError && (apiErr?.status === 400 || errStr.includes("json"))) {
             const fallbackResponse = await this.client.chat.completions.create({
               model: modelToTry,
               messages: [
@@ -244,7 +247,7 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
                 { role: "user", content: `${userMessage}\n\nIMPORTANT: Return ONLY a valid JSON object matching the requested schema.` }
               ],
               temperature: 0.1,
-              max_tokens: 500
+              max_tokens: 1500
             });
             messageContent = fallbackResponse.choices[0]?.message?.content || "{}";
           } else {
@@ -352,14 +355,12 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
           url: raw.url || observation.url,
           description: raw.description
         };
-      case "WAIT": {
-        const duration = Math.min(Math.max(100, Number(raw.durationMs) || 1000), 3000);
+      case "WAIT":
         return {
           type: "WAIT",
-          durationMs: duration,
+          durationMs: raw.durationMs || 1000,
           reason: raw.description
         };
-      }
       case "REQUEST_APPROVAL":
         return {
           type: "REQUEST_APPROVAL",
@@ -661,9 +662,9 @@ Respond with ONLY a JSON object in this schema:
 
     const candidateModels = [
       this.model,
+      "qwen/qwen3.8-27b",
       "openai/gpt-oss-120b",
       "openai/gpt-oss-20b",
-      "qwen/qwen3.8-27b",
       "allam-2-7b"
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
 

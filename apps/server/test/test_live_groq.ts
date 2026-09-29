@@ -8,23 +8,27 @@ async function runLiveTest() {
   const planner = new PlannerService(config.LLM_API_KEY, config.LLM_BASE_URL, config.LLM_MODEL);
 
   const mockObservation: PageObservation = {
-    url: "https://www.amazon.in/cart/localmarket",
-    title: "Amazon.in Shopping Cart",
+    url: "https://www.amazon.in/Sony-WH-1000XM5-Wireless-Cancelling-Headphones/dp/B09XS7JWHH",
+    title: "Sony WH-1000XM5 Wireless Industry Leading Active Noise Cancelling Headphones - Amazon.in",
     interactiveNodes: [
       {
-        id: "node-1",
-        role: "link",
-        name: "Amul Table Butter Salted 100 Gm.",
-        selector: "a.product-title",
-        bounds: { x: 100, y: 100, width: 200, height: 30 },
+        id: "node-50",
+        role: "generic",
+        name: "Price: ₹28,990.00 M.R.P: ₹34,990.00 (17% off)",
         isInteractive: true
       },
       {
-        id: "node-2",
+        id: "node-51",
         role: "button",
-        name: "Delete",
-        selector: 'input[value="Delete"]',
-        bounds: { x: 150, y: 140, width: 60, height: 25 },
+        name: "Add to Cart",
+        selector: "#add-to-cart-button",
+        isInteractive: true
+      },
+      {
+        id: "node-52",
+        role: "button",
+        name: "Buy Now",
+        selector: "#buy-now-button",
         isInteractive: true
       }
     ],
@@ -32,9 +36,13 @@ async function runLiveTest() {
   };
 
   const action = await planner.planNextStep(
-    "remove amul butter from cart",
+    "Automatically add to cart Sony XM5 headphones when the price drops below ₹29,999. (from amazon)",
     mockObservation,
-    []
+    [
+      "Typed 'Sony WH-1000XM5' into search input",
+      "Clicked Search button",
+      "Clicked product link for Sony WH-1000XM5"
+    ]
   );
 
   console.log("Planned Action Result:", JSON.stringify(action, null, 2));

@@ -1,14 +1,28 @@
 import { z } from "zod";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
 
-dotenv.config();
+// Automatically search and load .env from current directory, root, or apps/server
+const candidateEnvPaths = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "apps/server/.env"),
+  path.resolve(process.cwd(), "../.env"),
+  path.resolve(process.cwd(), "../../.env")
+];
+
+for (const envPath of candidateEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+}
 
 const ServerConfigSchema = z.object({
   PORT: z.coerce.number().default(3001),
   HOST: z.string().default("0.0.0.0"),
   LLM_BASE_URL: z.string().default("https://api.groq.com/openai/v1"),
   LLM_API_KEY: z.string().min(1, "LLM_API_KEY is required"),
-  LLM_MODEL: z.string().default("qwen/qwen3.8-27b")
+  LLM_MODEL: z.string().default("openai/gpt-oss-20b")
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;

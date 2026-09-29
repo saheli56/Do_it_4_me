@@ -1485,8 +1485,8 @@ export function App() {
                 action: msg.action
               },
               (res) => {
-                if (chrome.runtime.lastError) {
-                  // Navigation, form submission or page reload closed the message channel
+                if (chrome.runtime.lastError || res?.navigated) {
+                  // Navigation, form submission or page reload closed the message channel or initiated page transition
                   setLogs((prev) => [...prev, `Page updated / submitted. Capturing next page state...`]);
                   if (msg.taskId && activeTabId) {
                     captureTabObservationWithRetry(activeTabId, msg.taskId);
@@ -1495,17 +1495,6 @@ export function App() {
                 }
 
                 if (res?.observation && msg.taskId) {
-                  // If observation has fewer than 8 nodes and action was a CLICK or NAVIGATE,
-                  // the browser is in mid-navigation/page reload! Capture fresh observation with retry.
-                  const nodeCount = res.observation.interactiveNodes?.length || 0;
-                  if (nodeCount < 8 && (msg.action.type === "CLICK" || msg.action.type === "NAVIGATE")) {
-                    setLogs((prev) => [...prev, `Page navigating / loading... Capturing fresh state...`]);
-                    if (activeTabId) {
-                      captureTabObservationWithRetry(activeTabId, msg.taskId, 8, 450);
-                    }
-                    return;
-                  }
-
                   const nextObsMsg: ExtensionMessage = {
                     type: "OBSERVATION_CAPTURED",
                     taskId: msg.taskId,
@@ -1514,7 +1503,7 @@ export function App() {
                   sendExtensionMessage(nextObsMsg);
                   setLogs((prev) => [
                     ...prev,
-                    `Page observed (${nodeCount} interactive elements). Planning next step...`
+                    `Page observed (${res.observation.interactiveNodes?.length || 0} interactive elements). Planning next step...`
                   ]);
                 } else if (msg.taskId && activeTabId) {
                   captureTabObservationWithRetry(activeTabId, msg.taskId);
@@ -2321,37 +2310,41 @@ export function App() {
     return draft;
   };
 
-  const handleUpdateNoteDraftFields = (fields: Record<string, any>) => {
-    setActiveNoteDraft((prev) => {
-      if (!prev) return null;
-      const updated = { ...prev, ...fields };
-      let missing = [...(updated.missingFields || [])];
-      for (const [field, value] of Object.entries(fields)) {
-        if (typeof value === "string" && value.trim()) {
-          missing = missing.filter((f) => f !== field);
-        }
-      }
-      updated.missingFields = missing;
-
-      if (activeNoteId) {
-        setSavedNotes((notes) =>
-          notes.map((n) =>
-            n.id === activeNoteId
-              ? {
-                  ...n,
-                  status: missing.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT",
-                  parsedDraft: updated
-                }
-              : n
-          )
-        );
-      }
-      return updated;
-    });
-  };
-
   const handleUpdateNoteDraftField = (field: string, value: any) => {
-    handleUpdateNoteDraftFields({ [field]: value });
+    if (!activeNoteDraft) return;
+    const updated = { ...activeNoteDraft, [field]: value };
+    let missing = [...(updated.missingFields || [])];
+    if (field === "consumerNumber" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "consumerNumber");
+    }
+    if (field === "providerName" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "providerName");
+    }
+    if (field === "dueAmount" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "dueAmount");
+    }
+    if (field === "dueDate" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "dueDate");
+    }
+    if (field === "targetUrl" && value && value.trim()) {
+      missing = missing.filter((f) => f !== "targetUrl");
+    }
+    updated.missingFields = missing;
+    setActiveNoteDraft(updated);
+
+    if (activeNoteId) {
+      setSavedNotes((prev) =>
+        prev.map((n) =>
+          n.id === activeNoteId
+            ? {
+                ...n,
+                status: missing.length > 0 ? "NEEDS_CLARIFICATION" : "DRAFT",
+                parsedDraft: updated
+              }
+            : n
+        )
+      );
+    }
   };
 
   const handleToggleUrlAttach = async () => {
@@ -3009,20 +3002,8 @@ export function App() {
         }
       }
     };
-
-    const onGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsProfileDropdownOpen(false);
-        setIsMoreMenuOpen(false);
-      }
-    };
-
     window.addEventListener("paste", onGlobalPaste);
-    window.addEventListener("keydown", onGlobalKeyDown);
-    return () => {
-      window.removeEventListener("paste", onGlobalPaste);
-      window.removeEventListener("keydown", onGlobalKeyDown);
-    };
+    return () => window.removeEventListener("paste", onGlobalPaste);
   }, []);
 
   return (
@@ -3033,19 +3014,8 @@ export function App() {
       {/* Aceternity ambient glow backdrop */}
       <div class="ambient-glow" />
 
-      {/* Click-outside backdrop overlay for header dropdowns */}
-      {(isProfileDropdownOpen || isMoreMenuOpen) && (
-        <div
-          onClick={() => {
-            setIsProfileDropdownOpen(false);
-            setIsMoreMenuOpen(false);
-          }}
-          class="fixed inset-0 z-30 bg-black/10 backdrop-blur-[0.5px] cursor-default"
-        />
-      )}
-
       {/* Header Section */}
-      <header class="relative z-40 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
+      <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2 min-w-0">
           <div class="w-6 h-6 rounded-lg accent-gradient-bg flex items-center justify-center shadow-glow-sm shrink-0">
             <SparkleIcon size={13} class="text-white" />
@@ -3327,23 +3297,18 @@ export function App() {
       {/* EXECUTE TAB VIEW */}
       {activeTab === "EXECUTE" && (
         <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in">
-          {/* Main Goal Composer Card */}
-          <div class="glass-panel rounded-2xl p-3.5 space-y-3 shadow-glass border border-white/[0.09] relative overflow-hidden">
-            {/* Header: Action Title & Active Identity Pill */}
+          {/* Goal Input Glass Card */}
+          <div class="glass-panel rounded-xl p-3.5 space-y-2.5 shadow-glass">
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5">
-                <div class="w-2 h-2 rounded-full accent-gradient-bg shadow-glow-sm" />
-                <label class="text-xs font-bold text-zinc-100 tracking-tight">
-                  Automation Goal
-                </label>
-              </div>
-
+              <label class="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
+                <SparkleIcon size={13} class="accent-text" />
+                <span>What should the agent do?</span>
+              </label>
               {(() => {
                 const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
                 const currentProfileStyles = getProfileColorStyles(currentActiveProfile?.color);
                 return (
                   <button
-                    type="button"
                     onClick={() => {
                       if (currentActiveProfile) {
                         handleOpenEditProfile(currentActiveProfile);
@@ -3351,140 +3316,118 @@ export function App() {
                         setIsProfileVaultModalOpen(true);
                       }
                     }}
-                    class={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition active:scale-95 hover:brightness-110 shadow-xs ${
+                    class={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border transition active:scale-95 hover:brightness-110 ${
                       currentProfileStyles.badge
                     }`}
-                    title="Active Identity Profile — Click to Edit"
+                    title="Edit Personal Preferences & Profile Settings"
                   >
-                    <span class={`w-1.5 h-1.5 rounded-full ${currentProfileStyles.dot}`} />
-                    <span class="truncate max-w-[80px]">{currentActiveProfile?.label || "Personal"}</span>
+                    {renderProfileIcon(currentActiveProfile?.icon, 10)}
+                    <span class="truncate max-w-[90px]">{currentActiveProfile?.label || "Personal"}</span>
                   </button>
                 );
               })()}
             </div>
 
-            {/* Goal Textarea */}
-            <div class="relative">
-              <textarea
-                rows={3}
-                placeholder="What should the agent do? e.g. Track Sony WH-1000XM5 on amazon.in, auto buy when price drops under 29999..."
-                value={goal}
-                onInput={(e) => setGoal((e.target as HTMLTextAreaElement).value)}
-                class="w-full rounded-xl bg-zinc-900/80 border border-white/[0.08] p-3 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-border)] focus:ring-1 focus:ring-[var(--accent-border)] resize-none leading-relaxed transition shadow-inner"
-              />
+
+            <textarea
+              rows={3}
+              placeholder="e.g., Go to CESC bill portal, fill account 102938492, verify amount, and prepare payment..."
+              value={goal}
+              onInput={(e) => setGoal((e.target as HTMLTextAreaElement).value)}
+              class="w-full glass-input rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:ring-2 focus:ring-[var(--accent-border)] resize-none leading-relaxed"
+            />
+
+            {/* Quick Suggestion Pills */}
+            <div class="flex flex-wrap gap-1.5 pt-0.5">
+              {[
+                "Autofill contact & feedback form",
+                "Pay electricity bill on CESC",
+                "Verify shopping cart & coupon",
+                "Check broadband statement"
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => setGoal(suggestion)}
+                  class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:accent-text border border-white/[0.05] transition truncate max-w-full"
+                >
+                  + {suggestion}
+                </button>
+              ))}
             </div>
 
-            {/* Quick Inspiration & Template Chips (Clean Horizontal Row) */}
-            <div class="space-y-1.5 pt-0.5">
-              <div class="flex items-center justify-between text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                <span>Quick Templates</span>
-                <span class="text-[9px] text-zinc-500 font-normal lowercase">click to apply</span>
-              </div>
-              <div class="flex flex-wrap gap-1.5">
-                {[
-                  { icon: ShoppingCartSimpleIcon, label: "Price Drop (XM5)", text: "track Sony WH-1000XM5 on amazon.in, auto buy when price drops under 29999" },
-                  { icon: LightningIcon, label: "CESC Electricity Bill", text: "Pay electricity monthly bill on CESC portal" },
-                  { icon: FileTextIcon, label: "Autofill Form & Submit", text: "Autofill contact & inquiry form with profile details and submit" },
-                  { icon: CreditCardIcon, label: "Credit Card Payment", text: "Pay credit card bill due this month" }
-                ].map((item, idx) => {
-                  const IconComp = item.icon;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setGoal(item.text)}
-                      class="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/[0.07] hover:border-white/[0.18] transition flex items-center gap-1.5 active:scale-95 shadow-xs"
-                    >
-                      <IconComp size={11} class="text-zinc-400" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Quick Billing Timeline Chips */}
+            <div class="flex flex-wrap items-center gap-1.5 pt-1 pb-0.5">
+              <span class="text-[10px] text-zinc-500 font-medium">Timeline:</span>
+              {[
+                { id: "MONTHLY", label: "Monthly Bill" },
+                { id: "QUARTERLY", label: "Quarterly Bill" },
+                { id: "YEARLY", label: "Yearly Bill" },
+                { id: "ADVANCE", label: "Advance Payment" }
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => {
+                    const current = goal.trim();
+                    const cleanGoal = current.replace(/\s*\(?(monthly|quarterly|yearly|annual|advance)\s*(bill|timeline|payment)?\)?/gi, "").trim();
+                    setGoal(cleanGoal ? `${cleanGoal} (${opt.label})` : `Pay electricity ${opt.label.toLowerCase()}`);
+                  }}
+                  class="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.08] transition active:scale-95"
+                  title={`Set goal timeline to ${opt.label}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
-            {/* Quick Timeline Selector (Integrated) */}
-            <div class="flex items-center gap-1.5 pt-1 border-t border-white/[0.05]">
-              <span class="text-[10px] text-zinc-400 font-medium shrink-0">Cycle:</span>
-              <div class="flex flex-wrap gap-1">
-                {[
-                  { id: "MONTHLY", label: "Monthly" },
-                  { id: "QUARTERLY", label: "Quarterly" },
-                  { id: "YEARLY", label: "Yearly" },
-                  { id: "ADVANCE", label: "Advance" }
-                ].map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      const current = goal.trim();
-                      const cleanGoal = current.replace(/\s*\(?(monthly|quarterly|yearly|annual|advance)\s*(bill|timeline|payment)?\)?/gi, "").trim();
-                      setGoal(cleanGoal ? `${cleanGoal} (${opt.label} Bill)` : `Pay electricity ${opt.label.toLowerCase()} bill`);
-                    }}
-                    class="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.05] hover:border-white/[0.12] transition active:scale-95"
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Action Buttons Bar */}
             {taskState === "EXECUTING" || taskState === "PLANNING" ? (
-              <div class="flex gap-2 pt-1">
+              <div class="flex gap-2">
                 <button
                   disabled
-                  class="flex-1 shimmer-btn h-9 rounded-xl text-xs font-semibold text-white opacity-95 inline-flex items-center justify-center gap-2 shadow-glow-sm"
+                  class="flex-1 shimmer-btn h-9 rounded-lg text-xs font-semibold text-white opacity-90 inline-flex items-center justify-center gap-2 shadow-glow-sm"
                 >
                   <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Agent is executing live in tab...</span>
+                  <span>Agent is executing...</span>
                 </button>
                 <button
-                  type="button"
                   onClick={handleStopTask}
-                  title="Stop execution immediately"
-                  class="px-4 h-9 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/50 active:scale-[0.98] transition-all border border-rose-400/40"
+                  title="Stop and terminate agent execution immediately"
+                  class="px-4 h-9 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/50 active:scale-[0.98] transition-all border border-rose-400/40"
                 >
-                  <div class="w-2.5 h-2.5 rounded-xs bg-white" />
+                  <div class="w-2.5 h-2.5 rounded-sm bg-white" />
                   <span>Stop</span>
                 </button>
               </div>
             ) : (
-              <div class="flex items-center gap-2 pt-1">
+              <div class="flex flex-wrap gap-2">
                 <button
-                  type="button"
                   onClick={() => handleStartTask()}
                   disabled={!goal.trim() || (taskState !== null && taskState !== "COMPLETED" && taskState !== "FAILED" && taskState !== "CANCELLED")}
-                  class="flex-1 h-9.5 shimmer-btn rounded-xl text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
+                  class="flex-1 min-w-[130px] shimmer-btn h-9 rounded-lg text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 shadow-glow-sm active:scale-[0.98] transition-all"
                 >
                   <PlayIcon size={13} class="text-white fill-current" />
-                  <span>Run Automation</span>
+                  <span>Execute Goal in Tab</span>
                 </button>
-
                 <button
-                  type="button"
                   onClick={handleSmartFormatAndSchedule}
                   disabled={!goal.trim() || isFormattingTask}
-                  title="Structure & Auto-Schedule with AI"
-                  class="h-9.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white border border-white/[0.09] disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-xs font-semibold active:scale-[0.98] transition shadow-xs"
+                  title="Format rough task with AI, detect missing details, and auto-schedule"
+                  class="px-3 h-9 shimmer-btn text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition shadow-sm"
                 >
                   {isFormattingTask ? (
                     <div class="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   ) : (
                     <SparkleIcon size={13} class="text-amber-300" />
                   )}
-                  <span class="hidden sm:inline">Schedule</span>
+                  <span>AI Format & Schedule</span>
                 </button>
-
                 <button
-                  type="button"
                   onClick={handleSaveCurrentGoalAsTask}
                   disabled={!goal.trim()}
-                  title="Save to Task List"
-                  class="h-9.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/[0.09] disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-xs font-semibold active:scale-[0.98] transition shadow-xs"
+                  title="Save current goal and profile into your Task List for future runs"
+                  class="px-3 h-9 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-800 text-zinc-200 hover:text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 border border-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
                 >
                   <FloppyDiskIcon size={13} />
-                  <span class="hidden sm:inline">Save</span>
+                  <span>Save Task</span>
                 </button>
               </div>
             )}
@@ -3681,25 +3624,32 @@ export function App() {
       {activeTab === "NOTES" && (
         <div class="relative z-10 flex-1 flex flex-col space-y-3 min-h-0 animate-fade-in overflow-y-auto custom-scrollbar pr-1 pb-4">
           {/* Note Input & AI Auto-Structuring Card */}
-          <div class="glass-panel rounded-2xl p-3.5 space-y-3 shadow-glass border border-white/[0.09] shrink-0">
-            <div class="flex items-center justify-between border-b border-white/[0.06] pb-2">
-              <div class="flex items-center gap-2 min-w-0">
+          <div class="glass-panel rounded-xl p-3.5 space-y-3 shadow-glass shrink-0">
+            <div class="flex items-start justify-between gap-2.5 border-b border-white/[0.06] pb-2.5">
+              <div class="flex items-start gap-2.5 min-w-0 flex-1">
                 <div
-                  class="w-5 h-5 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
+                  class="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 mt-0.5"
                   style={{
                     background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
                   }}
                 >
-                  <FileTextIcon size={12} />
+                  <FileTextIcon size={13} />
                 </div>
-                <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5 truncate">
-                  <span>{activeNoteId ? "Editing Note" : "Smart Notes & Raw Tasks"}</span>
-                  {activeNoteId && (
-                    <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono shrink-0">
-                      Active
-                    </span>
-                  )}
-                </h3>
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5 truncate">
+                    <span>{activeNoteId ? "Editing Note" : "Smart Notes & Raw Tasks"}</span>
+                    {activeNoteId && (
+                      <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono shrink-0">
+                        Active
+                      </span>
+                    )}
+                  </h3>
+                  <p class="text-[10px] text-zinc-400 leading-tight mt-0.5">
+                    {activeNoteId
+                      ? "Modify your note or schedule below and click Save & Run"
+                      : "Jot down raw thoughts or messy bills — AI parses, clarifies, and schedules"}
+                  </p>
+                </div>
               </div>
 
               {activeNoteId && (
@@ -3711,40 +3661,46 @@ export function App() {
                     setNoteInput("");
                     setCustomPortalUrl("");
                   }}
-                  class="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-zinc-200 hover:text-white border border-white/[0.1] transition flex items-center gap-1 active:scale-95 shadow-xs"
+                  class="shrink-0 whitespace-nowrap text-[10px] font-medium px-2 py-1 rounded-md bg-white/[0.08] hover:bg-white/[0.14] text-zinc-200 hover:text-white border border-white/[0.1] transition flex items-center gap-1 active:scale-95 shadow-sm"
+                  title="Start a fresh note"
                 >
-                  <PlusIcon size={10} />
-                  <span>New</span>
+                  <PlusIcon size={11} />
+                  <span>New Note</span>
                 </button>
               )}
             </div>
 
-            {/* Quick Template Pills (Clean Horizontal Scroll) */}
+            {/* Quick Template Pills */}
             <div class="space-y-1.5">
               <span class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                Inspiration Templates:
+                Quick Raw Examples:
               </span>
               <div class="flex flex-wrap gap-1.5">
                 {[
                   {
-                    icon: ShoppingCartSimpleIcon,
-                    label: "Amazon Price Drop (XM5)",
-                    text: "track Sony WH-1000XM5 on amazon.in, auto buy when price drops under 29999"
-                  },
-                  {
                     icon: LightningIcon,
-                    label: "CESC Electricity (₹1,450)",
+                    label: "CESC Electricity (₹1,450 by 15th)",
                     text: "pay my cesc electric bill of 1450 before oct 15 every month on 5th"
                   },
                   {
                     icon: DeviceMobileIcon,
-                    label: "Airtel Recharge (₹479)",
+                    label: "Airtel Recharge (₹479 on 1st)",
                     text: "recharge my airtel mobile with 479 pack on 1st of every month"
                   },
                   {
                     icon: CreditCardIcon,
-                    label: "HDFC Credit Card",
+                    label: "HDFC Credit Card (₹8,500 by 20th)",
                     text: "pay hdfc credit card bill 8500 due on 20th every month"
+                  },
+                  {
+                    icon: GlobeIcon,
+                    label: "Broadband (₹999 on 10th)",
+                    text: "pay wifi broadband bill of 999 before 10th monthly"
+                  },
+                  {
+                    icon: ShoppingCartSimpleIcon,
+                    label: "Amazon Price Drop (₹19,999 Target)",
+                    text: "track Sony WH-1000XM4 on amazon.in, auto buy when price drops under 19999 (currently 24999)"
                   }
                 ].map((sample, idx) => {
                   const IconComp = sample.icon;
@@ -3756,7 +3712,7 @@ export function App() {
                         setNoteInput(sample.text);
                         handleAnalyzeRawNote(sample.text, true);
                       }}
-                      class="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-white/[0.07] hover:border-white/[0.16] text-zinc-300 hover:text-white transition active:scale-95 flex items-center gap-1.5 shadow-xs"
+                      class="text-[10px] px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 border border-white/[0.06] hover:border-white/[0.15] text-zinc-300 hover:text-white transition active:scale-95 flex items-center gap-1.5"
                     >
                       <IconComp size={11} class="text-zinc-400" />
                       <span>{sample.label}</span>
@@ -3773,32 +3729,24 @@ export function App() {
                 rows={3}
                 value={noteInput}
                 onInput={(e) => setNoteInput((e.target as HTMLTextAreaElement).value)}
-                placeholder="Type raw notes... e.g. 'track Sony WH-1000XM5 on amazon.in, auto buy when price drops under 29999'"
-                class="w-full px-3 py-2.5 rounded-xl bg-zinc-900/80 border border-white/[0.08] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-border)] focus:ring-1 focus:ring-[var(--accent-border)] resize-none leading-relaxed transition shadow-inner"
+                placeholder="Type anything raw... e.g. 'I have a 1450 electricity bill due on cesc.co.in by 15th oct, pay every month on 5th'"
+                class="w-full px-3 py-2 rounded-xl bg-zinc-900/80 border border-white/[0.08] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white/25 resize-none transition"
               />
             </div>
 
-            {/* Target Web URL Input with Auto-Grab */}
+            {/* Target Web URL Input (Optional) */}
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/80 border border-white/[0.08]">
               <GlobeIcon size={13} class="text-zinc-400 shrink-0" />
               <input
                 type="url"
                 value={customPortalUrl}
                 onInput={(e) => setCustomPortalUrl((e.target as HTMLInputElement).value)}
-                placeholder="Target URL / Webpage (optional)..."
-                class="flex-1 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none font-mono"
+                placeholder="Paste Target URL / Web Page (optional)..."
+                class="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none font-mono"
               />
-              <button
-                type="button"
-                onClick={handleAutoDetectTabForNote}
-                class="text-[10px] text-zinc-400 hover:text-white underline transition shrink-0"
-                title="Auto-fill with currently opened Chrome tab URL"
-              >
-                From Tab
-              </button>
             </div>
 
-            {/* Action Buttons: Clear and Save & Run */}
+            {/* ONLY 2 Action Buttons: Clear and Save & Run */}
             <div class="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
@@ -3810,8 +3758,8 @@ export function App() {
                   setAttachedTabNotice(null);
                 }}
                 disabled={!noteInput.trim() && !customPortalUrl.trim()}
-                class={`px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.07] transition active:scale-95 ${
-                  !noteInput.trim() && !customPortalUrl.trim() ? "opacity-40 cursor-not-allowed" : ""
+                class={`px-3.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06] transition active:scale-95 ${
+                  !noteInput.trim() && !customPortalUrl.trim() ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
                 Clear
@@ -3821,17 +3769,17 @@ export function App() {
                 type="button"
                 disabled={(!noteInput.trim() && !customPortalUrl.trim()) || isNoteAnalyzing}
                 onClick={() => handleSaveAndRunCustomUrlNote()}
-                class={`px-4 py-1.5 rounded-xl text-xs font-bold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
+                class={`px-4 py-1.5 rounded-lg text-xs font-semibold shimmer-btn text-white transition shadow-md flex items-center gap-1.5 active:scale-95 ${
                   (!noteInput.trim() && !customPortalUrl.trim()) || isNoteAnalyzing
-                    ? "opacity-40 cursor-not-allowed"
+                    ? "opacity-50 cursor-not-allowed"
                     : ""
                 }`}
                 style={{
                   background: `linear-gradient(135deg, ${currentThemeStyles.gradientFrom}, ${currentThemeStyles.gradientTo})`
                 }}
               >
-                <PlayIcon size={12} class={isNoteAnalyzing ? "animate-spin fill-current" : "fill-current"} />
-                <span>{isNoteAnalyzing ? "Analyzing..." : "Save & Run"}</span>
+                <PlayIcon size={13} class={isNoteAnalyzing ? "animate-spin" : ""} />
+                <span>{isNoteAnalyzing ? "Running..." : "Save & Run"}</span>
               </button>
             </div>
           </div>
@@ -4091,12 +4039,10 @@ export function App() {
                           <span class={`absolute left-2.5 top-1.5 text-xs font-mono font-bold ${currentAccentStyles.textHighlight || "accent-text"}`}>₹</span>
                           <input
                             type="number"
-                            value={activeNoteDraft.priceCondition?.targetPrice ?? ""}
+                            value={activeNoteDraft.priceCondition?.targetPrice || ""}
                             placeholder="e.g. 19999"
                             onInput={(e) => {
-                              const raw = (e.target as HTMLInputElement).value;
-                              const val = raw === "" ? undefined : parseFloat(raw);
-                              const numVal = val !== undefined && !isNaN(val) ? val : undefined;
+                              const val = parseFloat((e.target as HTMLInputElement).value);
                               const updatedCond = {
                                 ...(activeNoteDraft.priceCondition || {
                                   currency: "INR",
@@ -4105,12 +4051,12 @@ export function App() {
                                   autoProceedToCheckout: true,
                                   priceMatched: false
                                 }),
-                                targetPrice: numVal
+                                targetPrice: isNaN(val) ? undefined : val
                               };
-                              handleUpdateNoteDraftFields({
-                                priceCondition: updatedCond,
-                                dueAmount: numVal !== undefined ? `₹${numVal.toLocaleString("en-IN")}` : activeNoteDraft.dueAmount
-                              });
+                              handleUpdateNoteDraftField("priceCondition", updatedCond);
+                              if (!isNaN(val)) {
+                                handleUpdateNoteDraftField("dueAmount", `₹${val.toLocaleString("en-IN")}`);
+                              }
                             }}
                             class="w-full pl-6 pr-2.5 py-1.5 rounded-lg bg-zinc-900 border border-white/[0.12] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[var(--accent-color)] font-mono"
                           />
@@ -4125,12 +4071,10 @@ export function App() {
                           <span class="absolute left-2.5 top-1.5 text-xs text-zinc-500 font-mono">₹</span>
                           <input
                             type="number"
-                            value={activeNoteDraft.priceCondition?.currentPrice ?? ""}
+                            value={activeNoteDraft.priceCondition?.currentPrice || ""}
                             placeholder="e.g. 24999"
                             onInput={(e) => {
-                              const raw = (e.target as HTMLInputElement).value;
-                              const val = raw === "" ? undefined : parseFloat(raw);
-                              const numVal = val !== undefined && !isNaN(val) ? val : undefined;
+                              const val = parseFloat((e.target as HTMLInputElement).value);
                               const updatedCond = {
                                 ...(activeNoteDraft.priceCondition || {
                                   currency: "INR",
@@ -4139,7 +4083,7 @@ export function App() {
                                   autoProceedToCheckout: true,
                                   priceMatched: false
                                 }),
-                                currentPrice: numVal
+                                currentPrice: isNaN(val) ? undefined : val
                               };
                               handleUpdateNoteDraftField("priceCondition", updatedCond);
                             }}

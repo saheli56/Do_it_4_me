@@ -5,6 +5,9 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
+    "declaration": false,
+    "declarationMap": false,
+    "composite": false,
     "types": ["chrome", "wxt/client"]
   },
   "include": ["entrypoints/**/*", "src/**/*"]

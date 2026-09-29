@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import { loadConfig } from "./config.js";
 import { PlannerService } from "./planner.js";
 import { TaskOrchestrator } from "./orchestrator.js";
+import { IntentCompiler } from "./compiler.js";
 import { PendingTaskManager } from "./pending-task-manager.js";
 import { ProfileVaultManager } from "./profile-vault-manager.js";
 import {
@@ -27,7 +28,12 @@ export async function createServer() {
     config.LLM_BASE_URL,
     config.LLM_MODEL
   );
-  const orchestrator = new TaskOrchestrator(planner);
+  const compiler = new IntentCompiler(
+    config.LLM_API_KEY,
+    config.LLM_BASE_URL,
+    config.LLM_MODEL
+  );
+  const orchestrator = new TaskOrchestrator(planner, compiler);
   const pendingTaskManager = new PendingTaskManager();
   const profileVaultManager = new ProfileVaultManager();
 

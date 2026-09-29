@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PendingTaskManager } from "../src/pending-task-manager.js";
 import { calculateNextRunTime } from "@difm/shared";
 import fs from "fs";
@@ -138,6 +138,7 @@ describe("Task Management & Scheduling", () => {
   it("parses and formats rough task notes, detects missing fields, and enforces safety", async () => {
     const { PlannerService } = await import("../src/planner.js");
     const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+    vi.spyOn(planner["client"].chat.completions, "create").mockRejectedValue(new Error("LLM offline"));
 
     const parsed = await planner.parseRoughTask({
       rawGoal: "pay my cesc bill of 1450 before oct 15 every month on 5th"
@@ -157,6 +158,7 @@ describe("Task Management & Scheduling", () => {
   it("parses complete raw notes without missing fields when consumer number is provided", async () => {
     const { PlannerService } = await import("../src/planner.js");
     const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+    vi.spyOn(planner["client"].chat.completions, "create").mockRejectedValue(new Error("LLM offline"));
 
     const parsed = await planner.parseRoughTask({
       rawGoal: "pay cesc electric bill of Rs 1850 for account 050098765432 due on nov 10 every month on 5th",
@@ -175,6 +177,7 @@ describe("Task Management & Scheduling", () => {
   it("integrates parsed rough note into scheduled task manager with biller info", async () => {
     const { PlannerService } = await import("../src/planner.js");
     const planner = new PlannerService("dummy", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b");
+    vi.spyOn(planner["client"].chat.completions, "create").mockRejectedValue(new Error("LLM offline"));
 
     const parsed = await planner.parseRoughTask({
       rawGoal: "recharge airtel broadband 999 every month on 1st"

@@ -42,30 +42,11 @@ export const SecurityChallengeSchema = z.object({
 
 export type SecurityChallenge = z.infer<typeof SecurityChallengeSchema>;
 
-export const ProductContextSchema = z.object({
-  productTitle: z.string().optional(),
-  price: z.string().optional(),
-  priceNumber: z.number().optional(),
-  currency: z.string().optional(),
-  inStock: z.boolean().optional(),
-  addToCartNodeId: z.string().optional(),
-  buyNowNodeId: z.string().optional(),
-  searchResults: z.array(z.object({
-    nodeId: z.string(),
-    title: z.string(),
-    price: z.string().optional(),
-    priceNumber: z.number().optional()
-  })).optional()
-});
-
-export type ProductContext = z.infer<typeof ProductContextSchema>;
-
 export const PageObservationSchema = z.object({
   url: z.string(),
   title: z.string(),
   interactiveNodes: z.array(SemanticNodeSchema),
   securityChallenge: SecurityChallengeSchema.optional(),
-  productContext: ProductContextSchema.optional(),
   timestamp: z.number()
 });
 

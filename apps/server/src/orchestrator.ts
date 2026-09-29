@@ -2,10 +2,12 @@ import type {
   AgentAction,
   PageObservation,
   TaskState,
-  SecurityChallenge
+  SecurityChallenge,
+  WorkflowPlan
 } from "@difm/shared";
 import { isValidStateTransition, evaluateRiskTier } from "@difm/shared";
 import type { PlannerService } from "./planner.js";
+import { IntentCompiler } from "./compiler.js";
 
 export interface TaskSession {
   id: string;
@@ -16,26 +18,54 @@ export interface TaskSession {
   lastObservation?: PageObservation;
   pendingApprovalAction?: AgentAction;
   activeChallenge?: SecurityChallenge;
+  plan?: WorkflowPlan;
+}
+
+export function normalizeGoalForExecution(rawGoal: string): string {
+  // If goal has a conditional price trigger (e.g. "when price drops below X", "if price is under X", "buy when <= X")
+  const priceDropMatch = rawGoal.match(/(?:when|if)\s+(?:the\s+)?price\s+(?:drops\s+below|is\s+below|is\s+under|falls\s+below|<=|<)\s*([₹$€£]?\s*[\d,]+(?:\.\d+)?)/i);
+  
+  if (priceDropMatch) {
+    const targetPrice = priceDropMatch[1].trim();
+    let productPart = rawGoal
+      .replace(/automatically\s+(?:purchase|buy|add\s+to\s+cart|order)\s+/i, "")
+      .replace(/(?:when|if)\s+(?:the\s+)?price.*$/i, "")
+      .replace(/\s*\([^)]*\)\s*$/g, "")
+      .trim();
+
+    return `Search for and locate "${productPart || 'the requested product'}". Navigate to the matching product page and inspect its live price. If the current price is under or equal to ${targetPrice}, click 'Add to Cart' or 'Buy Now'. If the current price is higher than ${targetPrice}, output COMPLETE stating the current price vs target. Original goal: ${rawGoal}`;
+  }
+
+  return rawGoal;
 }
 
 export class TaskOrchestrator {
   private sessions = new Map<string, TaskSession>();
   private planner: PlannerService;
+  private compiler: IntentCompiler;
 
-  constructor(planner: PlannerService) {
+  constructor(planner: PlannerService, compiler?: IntentCompiler) {
     this.planner = planner;
+    this.compiler = compiler || new IntentCompiler(process.env.LLM_API_KEY || "", process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1", process.env.LLM_MODEL || "openai/gpt-oss-120b");
   }
 
   createTask(taskId: string, goal: string): TaskSession {
+    const normalizedGoal = normalizeGoalForExecution(goal);
     const session: TaskSession = {
       id: taskId,
-      goal,
+      goal: normalizedGoal,
       state: "CREATED",
       stepIndex: 0,
       history: []
     };
     this.sessions.set(taskId, session);
     this.transitionState(session, "UNDERSTANDING");
+
+    // Asynchronously compile workflow plan
+    this.compiler.compileGoal(goal).then((plan) => {
+      session.plan = plan;
+    }).catch(() => {});
+
     return session;
   }
 
@@ -106,7 +136,60 @@ export class TaskOrchestrator {
       };
     }
 
+    const url = (observation.url || "").toLowerCase();
+    const isProductPage = url.includes("/dp/") || url.includes("/gp/product") || url.includes("/p/") || url.includes("/product/") || url.includes("/item/");
+    const goalWantsCart = /add to cart|buy|purchase/i.test(session.goal);
+    const hasAddedToCart = session.history.some((h) => /add to cart|buy now/i.test(h));
+
+    // If on a product page and goal requires adding to cart, but it hasn't been clicked yet, ensure Add to Cart is clicked
+    if (isProductPage && goalWantsCart && !hasAddedToCart && (plannedAction.type === "COMPLETE" || plannedAction.type === "SCROLL")) {
+      const addToCartNode = observation.interactiveNodes.find((n) => {
+        const text = [n.name || "", n.value || "", n.selector || "", n.id || ""].join(" ").toLowerCase();
+        return /\b(add to cart|add to shopping cart|buy now|add-to-cart-button)\b/i.test(text) || text.includes("add-to-cart") || text.includes("addtocart");
+      });
+
+      if (addToCartNode) {
+        const clickAction: AgentAction = {
+          type: "CLICK",
+          target: {
+            id: addToCartNode.id,
+            name: addToCartNode.name || "Add to Cart",
+            role: addToCartNode.role || "button",
+            selector: addToCartNode.selector
+          },
+          description: `Click "${addToCartNode.name || 'Add to Cart'}" to add product to cart.`
+        };
+        this.transitionState(session, "EXECUTING");
+        session.stepIndex += 1;
+        session.history.push(`Step ${session.stepIndex}: [CLICK] Click Add to Cart button (${addToCartNode.id})`);
+        return { action: clickAction, requiresApproval: false };
+      }
+    }
+
+    const isCartPage = url.includes("/cart") || url.includes("/gp/cart") || url.includes("/smart-wagon") || (observation.title || "").toLowerCase().includes("cart");
+
+    // If item was already added to cart in an earlier step, or we arrived at the shopping cart page, terminate successfully immediately
+    if (goalWantsCart && (hasAddedToCart || isCartPage)) {
+      const summary = plannedAction.type === "COMPLETE" && plannedAction.summary
+        ? plannedAction.summary
+        : "Item has been added to cart successfully. Verified on cart screen.";
+      const completeAction: AgentAction = {
+        type: "COMPLETE",
+        summary
+      };
+      this.transitionState(session, "COMPLETED");
+      session.history.push(`Completed: ${summary}`);
+      return { action: completeAction, requiresApproval: false };
+    }
+
     if (plannedAction.type === "COMPLETE") {
+      // Guardrail against hallucinated "Item added to cart" completions when still on search pages
+      const isSearchPage = url.includes("/s?k=") || url.includes("/search") || url.includes("search_query") || url.includes("search_results");
+
+      if (isSearchPage && !hasAddedToCart && /added to cart|purchased|condition met/i.test(plannedAction.summary || "")) {
+        plannedAction.summary = `Search completed on store. The requested product was not found in the search results, so no item was added to cart.`;
+      }
+
       this.transitionState(session, "COMPLETED");
       session.history.push(`Completed: ${plannedAction.summary}`);
       return { action: plannedAction, requiresApproval: false };

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { PlannerService, normalizeExtractedUrl } from "../src/planner.js";
 
 describe("Bill Document Extraction & Parsing", () => {
@@ -13,6 +13,9 @@ describe("Bill Document Extraction & Parsing", () => {
   });
 
   it("extracts biller, consumer number, due date, portalUrl, and amount via heuristic fallback", async () => {
+    // Ensure instant fallback by mocking offline / failed LLM response
+    const spy = vi.spyOn(planner["client"].chat.completions, "create").mockRejectedValueOnce(new Error("LLM offline"));
+    
     const billSampleText = `
       CESC Limited - Electricity Bill for August 2026
       Consumer ID: 102938492019
@@ -39,6 +42,7 @@ describe("Bill Document Extraction & Parsing", () => {
   });
 
   it("extracts mobile / broadband invoice correctly", async () => {
+    vi.spyOn(planner["client"].chat.completions, "create").mockRejectedValueOnce(new Error("LLM offline"));
     const rechargeSampleText = `
       Airtel Broadband Fiber Receipt
       Account Number: 8888989261
