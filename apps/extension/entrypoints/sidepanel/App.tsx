@@ -3428,10 +3428,11 @@ export function App() {
             {/* Quick Suggestion Pills */}
             <div class="flex flex-wrap gap-1.5 pt-0.5">
               {[
-                "Autofill contact & feedback form",
+                "Compare Sony WH-1000XM5 on Amazon and Flipkart",
+                "Add Sony WH-1000XM5 to Flipkart cart",
+                "Watch Sony WH-1000XM5 on Amazon under 30000",
                 "Pay electricity bill on CESC",
-                "Verify shopping cart & coupon",
-                "Check broadband statement"
+                "Autofill contact & feedback form"
               ].map((suggestion) => (
                 <button
                   key={suggestion}
