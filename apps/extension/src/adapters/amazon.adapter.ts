@@ -129,7 +129,8 @@ export class AmazonAdapter implements SiteAdapter {
         }
       }
 
-      const maxThreshold = step.maxPriceThreshold || plan.parameters.maxPriceThreshold;
+      const maxThreshold =
+        step.type === "VERIFY_PRICE_AND_CART" ? step.maxPriceThreshold || plan.parameters.maxPriceThreshold : plan.parameters.maxPriceThreshold;
 
       if (maxThreshold && extractedPrice > 0 && extractedPrice > maxThreshold) {
         return {
@@ -160,4 +161,80 @@ export class AmazonAdapter implements SiteAdapter {
 
     return { handled: false };
   }
+
+  inspectPrice(doc: Document, url: string): import("./types.js").PriceInspectionResult | null {
+    const priceElem = doc.querySelector(
+      ".a-price .a-offscreen, #corePrice_feature_div .a-price-whole, #corePriceDisplay_desktop_feature_div .a-price-whole, #priceblock_ourprice, span.a-price span[aria-hidden='true']"
+    );
+    let extractedPrice: number | undefined;
+    if (priceElem && priceElem.textContent) {
+      const rawDigits = priceElem.textContent.replace(/[^0-9]/g, "");
+      if (rawDigits) {
+        extractedPrice = parseInt(rawDigits, 10);
+      }
+    }
+
+    const titleElem = doc.querySelector("#productTitle, #title, h1.a-size-large");
+    let title = titleElem?.textContent?.trim();
+
+    // Fallback for search results pages
+    if (!extractedPrice || !title) {
+      let searchParam = "";
+      try {
+        const u = new URL(url);
+        searchParam = (u.searchParams.get("k") || u.searchParams.get("field-keywords") || "").toLowerCase().trim();
+      } catch {}
+
+      const allCards = Array.from(doc.querySelectorAll('[data-component-type="s-search-result"]'));
+      let chosenCard: Element | null = null;
+
+      if (searchParam && searchParam.length > 2) {
+        const keywords = searchParam.split(/\s+/).filter((k) => k.length > 2);
+        for (const card of allCards) {
+          const cardTitle = (card.querySelector("h2 a span, h2 span, h2 a")?.textContent || "").toLowerCase();
+          const matchesAll = keywords.every((k) => cardTitle.includes(k));
+          if (matchesAll) {
+            chosenCard = card;
+            break;
+          }
+        }
+      }
+
+      if (!chosenCard && allCards.length > 0) {
+        // Fallback to first non-ad card
+        chosenCard = allCards.find((c) => !c.classList.contains("AdHolder") && !c.querySelector(".s-sponsored-label-info-icon")) || allCards[0];
+      }
+
+      if (chosenCard) {
+        if (!extractedPrice) {
+          const cardPrice = chosenCard.querySelector(".a-price .a-offscreen, .a-price-whole, .a-price span[aria-hidden='true']");
+          if (cardPrice?.textContent) {
+            const rawDigits = cardPrice.textContent.replace(/[^0-9]/g, "");
+            if (rawDigits) extractedPrice = parseInt(rawDigits, 10);
+          }
+        }
+        if (!title) {
+          const cardTitle = chosenCard.querySelector("h2 a span, h2 span, h2 a");
+          if (cardTitle?.textContent) title = cardTitle.textContent.trim();
+        }
+      }
+    }
+
+    const imgElem = doc.querySelector("#landingImage, #imgBlkFront, #main-image, [data-component-type='s-search-result'] img") as HTMLImageElement | null;
+    const imageUrl = imgElem?.src;
+
+    const availabilityElem = doc.querySelector("#availability, #availability-string");
+    const inStock = availabilityElem
+      ? !availabilityElem.textContent?.toLowerCase().includes("currently unavailable")
+      : true;
+
+    return {
+      currentPrice: extractedPrice,
+      currency: "INR",
+      title,
+      imageUrl,
+      inStock
+    };
+  }
 }
+

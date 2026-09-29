@@ -7,7 +7,8 @@ export const WorkflowDomainSchema = z.enum([
   "airtel",
   "jio",
   "generic_form",
-  "generic_search"
+  "generic_search",
+  "multi_store"
 ]);
 export type WorkflowDomain = z.infer<typeof WorkflowDomainSchema>;
 
@@ -16,7 +17,8 @@ export const WorkflowGoalTypeSchema = z.enum([
   "ADD_TO_CART",
   "BILL_PAYMENT",
   "FORM_AUTOFILL",
-  "GENERIC_SEARCH_NAVIGATE"
+  "GENERIC_SEARCH_NAVIGATE",
+  "MULTI_STORE_PRICE_COMPARE"
 ]);
 export type WorkflowGoalType = z.infer<typeof WorkflowGoalTypeSchema>;
 

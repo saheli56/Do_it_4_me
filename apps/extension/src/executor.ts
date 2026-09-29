@@ -164,41 +164,51 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 250): Pr
 
 export function simulateRealClick(element: HTMLElement | Element): void {
   const doc = element.ownerDocument || document;
-  const win = doc.defaultView || window;
+  const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
   let clientX = 0;
   let clientY = 0;
 
   if (typeof element.getBoundingClientRect === "function") {
-    const rect = element.getBoundingClientRect();
-    clientX = rect.left + rect.width / 2;
-    clientY = rect.top + rect.height / 2;
+    try {
+      const rect = element.getBoundingClientRect();
+      clientX = rect.left + rect.width / 2;
+      clientY = rect.top + rect.height / 2;
+    } catch {}
   }
 
   const events = ["pointerdown", "mousedown", "focus", "pointerup", "mouseup", "click"];
+  const EventCtor = (win as any)?.Event || (typeof Event !== "undefined" ? Event : null);
+  const MouseEventCtor = (win as any)?.MouseEvent || (typeof MouseEvent !== "undefined" ? MouseEvent : EventCtor);
+  const PointerEventCtor = (win as any)?.PointerEvent || (typeof PointerEvent !== "undefined" ? PointerEvent : MouseEventCtor);
+
   for (const eventName of events) {
-    let evt: Event;
-    if (eventName.startsWith("pointer") && typeof PointerEvent !== "undefined") {
-      evt = new PointerEvent(eventName, {
-        bubbles: true,
-        cancelable: true,
-        view: win,
-        clientX,
-        clientY,
-        pointerType: "mouse"
-      });
-    } else if ((eventName.startsWith("mouse") || eventName === "click") && typeof MouseEvent !== "undefined") {
-      evt = new MouseEvent(eventName, {
-        bubbles: true,
-        cancelable: true,
-        view: win,
-        clientX,
-        clientY,
-        buttons: eventName.includes("down") ? 1 : 0
-      });
-    } else {
-      evt = new Event(eventName, { bubbles: true, cancelable: true });
-    }
-    element.dispatchEvent(evt);
+    try {
+      let evt: any;
+      if (eventName.startsWith("pointer") && PointerEventCtor) {
+        evt = new PointerEventCtor(eventName, {
+          bubbles: true,
+          cancelable: true,
+          view: win,
+          clientX,
+          clientY,
+          pointerType: "mouse"
+        });
+      } else if ((eventName.startsWith("mouse") || eventName === "click") && MouseEventCtor) {
+        evt = new MouseEventCtor(eventName, {
+          bubbles: true,
+          cancelable: true,
+          view: win,
+          clientX,
+          clientY,
+          buttons: eventName.includes("down") ? 1 : 0
+        });
+      } else if (EventCtor) {
+        evt = new EventCtor(eventName, { bubbles: true, cancelable: true });
+      }
+      if (evt) {
+        element.dispatchEvent(evt);
+      }
+    } catch {}
   }
 
   if (typeof (element as HTMLElement).click === "function") {
@@ -218,10 +228,11 @@ export function simulateRealClick(element: HTMLElement | Element): void {
   }
 
   // If this is an input submit inside a form (e.g. Amazon addToCart form)
-  if (element instanceof HTMLInputElement && element.type === "submit" && element.form) {
+  if (element.tagName === "INPUT" && (element as HTMLInputElement).type === "submit" && (element as HTMLInputElement).form) {
     try {
-      if (typeof element.form.requestSubmit === "function") {
-        element.form.requestSubmit(element);
+      const form = (element as HTMLInputElement).form;
+      if (form && typeof form.requestSubmit === "function") {
+        form.requestSubmit(element as HTMLInputElement);
       }
     } catch {}
   }
@@ -230,7 +241,7 @@ export function simulateRealClick(element: HTMLElement | Element): void {
 export async function executeAgentAction(
   action: AgentAction,
   doc: Document = typeof document !== "undefined" ? document : (globalThis.document as Document)
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; navigated?: boolean }> {
   try {
     switch (action.type) {
       case "CLICK": {
@@ -298,10 +309,14 @@ export async function executeAgentAction(
           inputEl.value = "";
         }
 
+        const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
+        const HTMLTextareaCtor = (win as any)?.HTMLTextAreaElement || (typeof HTMLTextAreaElement !== "undefined" ? HTMLTextAreaElement : null);
+        const HTMLInputCtor = (win as any)?.HTMLInputElement || (typeof HTMLInputElement !== "undefined" ? HTMLInputElement : null);
+
         const proto =
-          inputEl instanceof HTMLTextAreaElement
-            ? HTMLTextAreaElement.prototype
-            : HTMLInputElement.prototype;
+          inputEl.tagName === "TEXTAREA"
+            ? (HTMLTextareaCtor ? HTMLTextareaCtor.prototype : Object.getPrototypeOf(inputEl))
+            : (HTMLInputCtor ? HTMLInputCtor.prototype : Object.getPrototypeOf(inputEl));
         const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
 
         if (nativeSetter) {
@@ -310,7 +325,6 @@ export async function executeAgentAction(
           inputEl.value = action.text;
         }
 
-        const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
         const Evt = (win && (win as unknown as { Event: typeof Event }).Event) || Event;
 
         if (typeof inputEl.dispatchEvent === "function") {
@@ -332,9 +346,11 @@ export async function executeAgentAction(
           return { success: false, error: `Select element not found: ${action.target.name || action.target.selector}` };
         }
         await highlightElement(el, `Selecting "${action.value}"`);
+        const win = doc.defaultView || (typeof window !== "undefined" ? window : globalThis.window);
+        const Evt = (win && (win as unknown as { Event: typeof Event }).Event) || Event;
         const selectEl = el as HTMLSelectElement;
         selectEl.value = action.value;
-        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        selectEl.dispatchEvent(new Evt("change", { bubbles: true }));
         await waitForSettlement(doc);
         return { success: true };
       }

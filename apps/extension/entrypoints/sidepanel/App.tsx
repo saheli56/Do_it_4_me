@@ -543,7 +543,24 @@ export interface RawNoteItem {
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"EXECUTE" | "NOTES" | "PENDING">("EXECUTE");
-  const [goal, setGoal] = useState("");
+  const [goal, setGoalInternal] = useState<string>(() => {
+    try {
+      return localStorage.getItem("difm_current_goal") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  const setGoal = (val: string | ((prev: string) => string)) => {
+    setGoalInternal((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      try {
+        localStorage.setItem("difm_current_goal", next);
+      } catch {}
+      return next;
+    });
+  };
+
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskState, setTaskState] = useState<TaskState | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -1667,6 +1684,78 @@ export function App() {
 
       setLogs((prev) => [...prev, `Navigated to target portal. Initializing autonomous agent...`]);
 
+      // Automatically register recurring watch or price-drop tasks in background scheduler
+      const isWatchPrompt = /(?:watch|track|alert|price drop|check every)/i.test(taskGoal);
+      const priceMatch = taskGoal.match(/(?:under|below|price\s*(?:of|is|<=|<=?|at|drop)?)\s*(?:₹|rs\.?|inr)?\s*([\d,]+)/i);
+      const targetPrice = priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : undefined;
+      const intervalMatch = taskGoal.match(/every\s*(\d+)\s*(?:min|minute|minutes|m|hour|hours|h)/i);
+      let intervalMinutes = 30;
+      if (intervalMatch) {
+        const unit = intervalMatch[0].toLowerCase();
+        const val = parseInt(intervalMatch[1], 10);
+        if (unit.includes("hour") || unit.includes("h")) {
+          intervalMinutes = val * 60;
+        } else {
+          intervalMinutes = Math.max(1, val);
+        }
+      }
+
+      if (!pendingTaskId && isWatchPrompt) {
+        try {
+          const existingTask = pendingTasks.find(
+            (t) =>
+              (t.category === "COMMERCE_WATCH" || t.priceCondition) &&
+              t.status !== "COMPLETED" &&
+              t.status !== "CANCELLED" &&
+              (t.targetUrl === targetUrlToUse || t.description === taskGoal || t.title === taskGoal.slice(0, 50))
+          );
+
+          if (existingTask) {
+            executingPendingTaskIdRef.current = existingTask.id;
+          } else {
+            const autoSchedRes = await fetch("http://127.0.0.1:3001/pending-tasks", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: taskGoal.length > 50 ? taskGoal.slice(0, 47) + "..." : taskGoal,
+                description: taskGoal,
+                category: "COMMERCE_WATCH",
+                priority: "HIGH",
+                targetUrl: targetUrlToUse,
+                schedule: {
+                  enabled: true,
+                  frequency: "INTERVAL_MINUTES",
+                  intervalMinutes,
+                  autoExecute: true,
+                  nextRunAt: Date.now() + intervalMinutes * 60 * 1000
+                },
+                priceCondition: {
+                  targetPrice,
+                  checkIntervalMinutes: intervalMinutes,
+                  autoAddToCart: true,
+                  autoProceedToCheckout: true,
+                  productTitle: taskGoal.slice(0, 50)
+                }
+              })
+            });
+            if (autoSchedRes.ok) {
+              const schedData = (await autoSchedRes.json()) as { task?: PendingTaskItem };
+              if (schedData.task?.id) {
+                executingPendingTaskIdRef.current = schedData.task.id;
+              }
+              fetchPendingTasks();
+              chrome.runtime.sendMessage({ type: "CHECK_TASKS_IMMEDIATELY" }).catch(() => {});
+              setLogs((prev) => [
+                ...prev,
+                `⏰ Registered background watch schedule (checks every ${intervalMinutes} min). Will alert via desktop notification even when sidepanel is closed.`
+              ]);
+            }
+          }
+        } catch (schedErr) {
+          console.warn("Could not auto-register background schedule:", schedErr);
+        }
+      }
+
       const res = await fetch("http://127.0.0.1:3001/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1676,7 +1765,6 @@ export function App() {
       if (!res.ok) {
         throw new Error("Failed to start task on server");
       }
-
 
       const data = (await res.json()) as { taskId: string; state: TaskState };
       setTaskId(data.taskId);

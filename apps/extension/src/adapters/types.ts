@@ -8,6 +8,14 @@ export interface AdapterExecutionResult {
   handled: boolean;
 }
 
+export interface PriceInspectionResult {
+  currentPrice?: number;
+  currency?: string;
+  title?: string;
+  imageUrl?: string;
+  inStock?: boolean;
+}
+
 export interface SiteAdapter {
   name: string;
   matches(url: string, plan?: WorkflowPlan): boolean;
@@ -17,4 +25,6 @@ export interface SiteAdapter {
     observation: PageObservation,
     plan: WorkflowPlan
   ): Promise<AdapterExecutionResult>;
+  inspectPrice?(doc: Document, url: string): Promise<PriceInspectionResult | null> | PriceInspectionResult | null;
 }
+

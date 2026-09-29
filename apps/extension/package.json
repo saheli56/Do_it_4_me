@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist .output .wxt"
   },

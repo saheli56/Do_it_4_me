@@ -19,6 +19,103 @@ export class IntentCompiler {
     const lower = rawGoal.toLowerCase();
 
     // 1. Instant Zero-Token Heuristic Compiler for Top Sites
+    // Multi-Store Price Comparison (e.g. "compare price of X on amazon and flipkart")
+    if (
+      (lower.includes("compare") && (lower.includes("flipkart") || lower.includes("amazon"))) ||
+      (lower.includes("flipkart") && lower.includes("amazon"))
+    ) {
+      const priceMatch = lower.match(/(?:below|under|price drop below|less than)\s*(?:₹|rs\.?|inr)?\s*([0-9,]+)/i);
+      const maxPrice = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ""), 10) : undefined;
+
+      let productQuery = rawGoal
+        .replace(/compare\s+(?:price|prices)?\s*(?:of)?/i, "")
+        .replace(/on amazon and flipkart/i, "")
+        .replace(/on flipkart and amazon/i, "")
+        .replace(/between amazon and flipkart/i, "")
+        .replace(/between flipkart and amazon/i, "")
+        .replace(/across amazon and flipkart/i, "")
+        .replace(/across flipkart and amazon/i, "")
+        .replace(/from amazon and flipkart/i, "")
+        .replace(/from flipkart and amazon/i, "")
+        .replace(/under\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
+        .replace(/below\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
+        .trim();
+
+      if (!productQuery || productQuery.length < 3) {
+        productQuery = "Sony WH-1000XM5";
+      }
+
+      return {
+        id: `plan_multistore_${Date.now()}`,
+        domain: "multi_store",
+        goalType: "MULTI_STORE_PRICE_COMPARE",
+        targetUrl: "https://www.google.com",
+        parameters: {
+          productQuery,
+          productModel: productQuery,
+          maxPriceThreshold: maxPrice
+        },
+        steps: [
+          { type: "NAVIGATE", url: "https://www.amazon.in", description: "Navigate to Amazon for price check" },
+          { type: "SEARCH", query: productQuery, description: `Search Amazon for "${productQuery}"` },
+          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on Amazon` },
+          { type: "NAVIGATE", url: "https://www.flipkart.com", description: "Navigate to Flipkart for price check" },
+          { type: "SEARCH", query: productQuery, description: `Search Flipkart for "${productQuery}"` },
+          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on Flipkart` },
+          { type: "COMPLETE", summary: `Multi-store price comparison completed for "${productQuery}".` }
+        ],
+        createdAt: Date.now()
+      };
+    }
+
+    // Flipkart Product Search & Add to Cart / Price Drop
+    if (lower.includes("flipkart") || contextUrl.includes("flipkart")) {
+      const priceMatch = lower.match(/(?:below|under|price drop below|less than)\s*(?:₹|rs\.?|inr)?\s*([0-9,]+)/i);
+      const maxPrice = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ""), 10) : undefined;
+
+      let productQuery = rawGoal
+        .replace(/automatically\s+/i, "")
+        .replace(/add to cart\s+/i, "")
+        .replace(/purchase\s+/i, "")
+        .replace(/buy\s+/i, "")
+        .replace(/when the price drops.*/i, "")
+        .replace(/\(from flipkart\)/i, "")
+        .replace(/from flipkart/i, "")
+        .replace(/on flipkart/i, "")
+        .replace(/to flipkart cart/i, "")
+        .replace(/to flipkart/i, "")
+        .replace(/in flipkart/i, "")
+        .replace(/watch\s+/i, "")
+        .replace(/track\s+/i, "")
+        .replace(/under\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
+        .replace(/below\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
+        .trim();
+
+      if (!productQuery || productQuery.length < 2) {
+        productQuery = "Sony WH-1000XM5";
+      }
+
+      return {
+        id: `plan_flipkart_${Date.now()}`,
+        domain: "flipkart",
+        goalType: maxPrice ? "PURCHASE_PRICE_DROP" : "ADD_TO_CART",
+        targetUrl: "https://www.flipkart.com",
+        parameters: {
+          productQuery,
+          productModel: productQuery,
+          maxPriceThreshold: maxPrice
+        },
+        steps: [
+          { type: "NAVIGATE", url: "https://www.flipkart.com", description: "Navigate to Flipkart" },
+          { type: "SEARCH", query: productQuery, description: `Search for "${productQuery}" on Flipkart` },
+          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select product matching "${productQuery}"` },
+          { type: "VERIFY_PRICE_AND_CART", maxPriceThreshold: maxPrice, description: `Verify price${maxPrice ? ` under ₹${maxPrice}` : ""} and Add to Cart on Flipkart` },
+          { type: "COMPLETE", summary: `Item verified and added to Flipkart shopping cart.` }
+        ],
+        createdAt: Date.now()
+      };
+    }
+
     // Amazon Product Search & Add to Cart
     if (lower.includes("amazon") || contextUrl.includes("amazon") || /\b(buy|cart|purchase|headphones|tv|laptop|phone|monitor)\b/i.test(lower)) {
       const priceMatch = lower.match(/(?:below|under|price drop below|less than)\s*(?:₹|rs\.?|inr)?\s*([0-9,]+)/i);
@@ -33,6 +130,13 @@ export class IntentCompiler {
         .replace(/\(from amazon\)/i, "")
         .replace(/from amazon/i, "")
         .replace(/on amazon/i, "")
+        .replace(/to amazon cart/i, "")
+        .replace(/to amazon/i, "")
+        .replace(/in amazon/i, "")
+        .replace(/watch\s+/i, "")
+        .replace(/track\s+/i, "")
+        .replace(/under\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
+        .replace(/below\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
         .trim();
 
       if (!productQuery || productQuery.length < 3) {
@@ -117,8 +221,8 @@ CURRENT CONTEXT URL: "${contextUrl}"
 
 Respond ONLY in valid JSON matching this schema:
 {
-  "domain": "amazon" | "flipkart" | "cesc" | "airtel" | "jio" | "generic_form" | "generic_search",
-  "goalType": "PURCHASE_PRICE_DROP" | "ADD_TO_CART" | "BILL_PAYMENT" | "FORM_AUTOFILL" | "GENERIC_SEARCH_NAVIGATE",
+  "domain": "amazon" | "flipkart" | "cesc" | "airtel" | "jio" | "generic_form" | "generic_search" | "multi_store",
+  "goalType": "PURCHASE_PRICE_DROP" | "ADD_TO_CART" | "BILL_PAYMENT" | "FORM_AUTOFILL" | "GENERIC_SEARCH_NAVIGATE" | "MULTI_STORE_PRICE_COMPARE",
   "targetUrl": "https://...",
   "parameters": {
     "productQuery": "...",

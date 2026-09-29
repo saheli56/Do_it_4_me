@@ -23,7 +23,8 @@ export const ScheduleFrequencySchema = z.enum([
   "DAILY",
   "WEEKLY",
   "MONTHLY",
-  "CUSTOM_DAYS"
+  "CUSTOM_DAYS",
+  "INTERVAL_MINUTES"
 ]);
 export type ScheduleFrequency = z.infer<typeof ScheduleFrequencySchema>;
 
@@ -34,6 +35,7 @@ export const TaskScheduleSchema = z.object({
   dayOfWeek: z.number().min(0).max(6).optional(), // 0=Sunday, 1=Monday, ...
   dayOfMonth: z.number().min(1).max(31).optional(), // e.g. 5 for 5th of each month
   intervalDays: z.number().min(1).optional(), // for CUSTOM_DAYS
+  intervalMinutes: z.number().min(1).optional(), // for INTERVAL_MINUTES (e.g. price drops)
   autoExecute: z.boolean().default(false), // true = run autonomously with AI agent, false = alert only
   nextRunAt: z.number().optional(), // epoch timestamp ms
   lastRunAt: z.number().optional()
@@ -100,6 +102,8 @@ export const PriceConditionSchema = z.object({
   autoAddToCart: z.boolean().default(true),
   autoProceedToCheckout: z.boolean().default(true),
   lastCheckedAt: z.number().optional(),
+  lastNotifiedPrice: z.number().optional(),
+  lastNotifiedAt: z.number().optional(),
   priceMatched: z.boolean().default(false),
   productTitle: z.string().optional(),
   productImageUrl: z.string().optional()
@@ -244,6 +248,10 @@ export function calculateNextRunTime(schedule: TaskSchedule, fromTime = Date.now
       const interval = schedule.intervalDays || 1;
       targetDate.setDate(targetDate.getDate() + interval);
       return targetDate.getTime();
+    }
+    case "INTERVAL_MINUTES": {
+      const mins = schedule.intervalMinutes || 30;
+      return fromTime + mins * 60 * 1000;
     }
     default:
       return undefined;
