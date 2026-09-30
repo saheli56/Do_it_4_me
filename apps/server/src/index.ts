@@ -343,12 +343,17 @@ export async function createServer() {
     }
 
     const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const session = orchestrator.createTask(taskId, parseResult.data.goal);
+    const session = orchestrator.createTask(
+      taskId,
+      parseResult.data.goal,
+      parseResult.data.mode || "AUTONOMOUS"
+    );
 
     return {
       taskId: session.id,
       goal: session.goal,
-      state: session.state
+      state: session.state,
+      mode: session.executionMode
     };
   });
 

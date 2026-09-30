@@ -15,6 +15,7 @@ export interface TaskSession {
   state: TaskState;
   stepIndex: number;
   history: string[];
+  executionMode?: "AUTONOMOUS" | "STEP_APPROVAL";
   lastObservation?: PageObservation;
   pendingApprovalAction?: AgentAction;
   activeChallenge?: SecurityChallenge;
@@ -49,14 +50,15 @@ export class TaskOrchestrator {
     this.compiler = compiler || new IntentCompiler(process.env.LLM_API_KEY || "", process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1", process.env.LLM_MODEL || "openai/gpt-oss-120b");
   }
 
-  createTask(taskId: string, goal: string): TaskSession {
+  createTask(taskId: string, goal: string, mode: "AUTONOMOUS" | "STEP_APPROVAL" = "AUTONOMOUS"): TaskSession {
     const normalizedGoal = normalizeGoalForExecution(goal);
     const session: TaskSession = {
       id: taskId,
       goal: normalizedGoal,
       state: "CREATED",
       stepIndex: 0,
-      history: []
+      history: [],
+      executionMode: mode
     };
     this.sessions.set(taskId, session);
     this.transitionState(session, "UNDERSTANDING");
@@ -125,6 +127,23 @@ export class TaskOrchestrator {
         : undefined;
 
     const riskPolicy = evaluateRiskTier(plannedAction.type, targetText);
+
+    // In STEP_APPROVAL mode, every active DOM action (clicks, typing, selects) requires user approval
+    if (
+      session.executionMode === "STEP_APPROVAL" &&
+      plannedAction.type !== "COMPLETE" &&
+      plannedAction.type !== "FAIL" &&
+      plannedAction.type !== "WAIT"
+    ) {
+      session.pendingApprovalAction = plannedAction;
+      this.transitionState(session, "WAITING_FOR_APPROVAL");
+      const actionDesc = "description" in plannedAction ? (plannedAction as any).description : "";
+      return {
+        action: plannedAction,
+        requiresApproval: true,
+        summary: actionDesc || `Approval required before executing: [${plannedAction.type}] ${targetText ? `"${targetText}"` : ""}`
+      };
+    }
 
     if (riskPolicy.requiresExplicitApproval || plannedAction.type === "REQUEST_APPROVAL") {
       session.pendingApprovalAction = plannedAction;

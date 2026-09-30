@@ -585,6 +585,22 @@ export function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
+  // Execution Mode State: Autopilot (Full Auto) vs Co-Pilot (Step Approval)
+  const [executionMode, setExecutionMode] = useState<"AUTONOMOUS" | "STEP_APPROVAL">(() => {
+    try {
+      return (localStorage.getItem("difm_execution_mode") as any) || "AUTONOMOUS";
+    } catch {
+      return "AUTONOMOUS";
+    }
+  });
+
+  const handleSelectExecutionMode = (mode: "AUTONOMOUS" | "STEP_APPROVAL") => {
+    setExecutionMode(mode);
+    try {
+      localStorage.setItem("difm_execution_mode", mode);
+    } catch {}
+  };
+
   // Identity Profile Vault State
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
     try {
@@ -1759,7 +1775,7 @@ export function App() {
       const res = await fetch("http://127.0.0.1:3001/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: taskGoal })
+        body: JSON.stringify({ goal: taskGoal, mode: executionMode })
       });
 
       if (!res.ok) {
@@ -3416,6 +3432,45 @@ export function App() {
               })()}
             </div>
 
+            {/* Execution Mode Selector: Autopilot vs Co-Pilot */}
+            <div class="flex items-center justify-between bg-zinc-950/80 px-2.5 py-1.5 rounded-lg border border-white/[0.07] shadow-inner">
+              <div class="flex items-center gap-1.5 text-[11px]">
+                <span class="text-zinc-400 font-medium">Mode:</span>
+                <span class={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  executionMode === "AUTONOMOUS"
+                    ? "text-emerald-400 bg-emerald-950/50 border border-emerald-500/30"
+                    : "text-amber-400 bg-amber-950/50 border border-amber-500/30"
+                }`}>
+                  {executionMode === "AUTONOMOUS" ? "⚡ Autopilot" : "🛡️ Co-Pilot"}
+                </span>
+              </div>
+              <div class="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-md border border-white/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => handleSelectExecutionMode("AUTONOMOUS")}
+                  class={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                    executionMode === "AUTONOMOUS"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                  title="Autopilot Mode: Agent executes all taps and workflow steps automatically without asking for approval."
+                >
+                  <span>⚡ Auto</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectExecutionMode("STEP_APPROVAL")}
+                  class={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                    executionMode === "STEP_APPROVAL"
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                  title="Co-Pilot Mode: Agent pauses and asks for your approval before every tap, click, or step."
+                >
+                  <span>🛡️ Step Approval</span>
+                </button>
+              </div>
+            </div>
 
             <textarea
               rows={3}
@@ -3591,28 +3646,35 @@ export function App() {
             </div>
           )}
 
-          {/* Sensitive Action User Approval Card */}
-          {/* Sensitive Action User Approval Card */}
+          {/* Sensitive Action & Step-by-Step User Approval Card */}
           {approvalPrompt && (
-            <div class="glass-panel accent-bg-subtle border-[var(--accent-border)] rounded-xl p-3.5 shadow-glass animate-scale-in">
+            <div class="glass-panel bg-amber-950/40 border-amber-500/40 rounded-xl p-3.5 shadow-glass animate-scale-in">
               <div class="flex items-start gap-2.5">
-                <ShieldCheckIcon size={20} class="accent-text shrink-0 mt-0.5" />
+                <ShieldCheckIcon size={20} class="text-amber-400 shrink-0 mt-0.5" />
                 <div class="flex-1 min-w-0">
-                  <h3 class="text-xs font-bold text-zinc-100">Confirmation Required</h3>
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
+                      {executionMode === "STEP_APPROVAL" ? "🛡️ Co-Pilot Step Approval" : "⚠️ Confirmation Required"}
+                    </span>
+                  </div>
+                  <h3 class="text-xs font-bold text-zinc-100 mt-1.5">Action Approval</h3>
                   <p class="text-xs text-zinc-200 mt-1 font-medium leading-relaxed">{approvalPrompt.summary}</p>
-                  <p class="text-[11px] text-zinc-400 mt-0.5">{approvalPrompt.consequences}</p>
+                  {approvalPrompt.consequences && (
+                    <p class="text-[11px] text-zinc-400 mt-0.5">{approvalPrompt.consequences}</p>
+                  )}
                   <div class="mt-3 flex items-center gap-2">
                     <button
                       onClick={() => handleDecision(true)}
-                      class="text-[11px] accent-btn-primary font-semibold px-3 py-1 rounded-md transition shadow-sm active:scale-95"
+                      class="text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-md transition shadow-sm active:scale-95 flex items-center gap-1.5"
                     >
-                      Approve & Continue
+                      <CheckCircleIcon size={13} />
+                      <span>Approve & Execute Step</span>
                     </button>
                     <button
                       onClick={() => handleDecision(false)}
-                      class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1 rounded-md border border-white/[0.08] transition active:scale-95"
+                      class="text-[11px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md border border-white/[0.08] transition active:scale-95"
                     >
-                      Cancel Action
+                      Skip / Cancel
                     </button>
                   </div>
                 </div>

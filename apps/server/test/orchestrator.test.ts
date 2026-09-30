@@ -77,4 +77,46 @@ describe("TaskOrchestrator state machine & risk boundaries", () => {
     expect(approvedAction?.type).toBe("CLICK");
     expect(session.state).toBe("EXECUTING");
   });
+
+  it("requires step-by-step approval for ordinary clicks when mode is STEP_APPROVAL", async () => {
+    const mockPlanner = {
+      planNextStep: vi.fn().mockResolvedValue({
+        type: "CLICK",
+        target: { id: "node-search", name: "Search Button" },
+        description: "Click search button to submit query"
+      })
+    } as unknown as PlannerService;
+
+    const orchestrator = new TaskOrchestrator(mockPlanner);
+    const session = orchestrator.createTask("task-step-mode", "Search for headphones", "STEP_APPROVAL");
+    expect(session.executionMode).toBe("STEP_APPROVAL");
+
+    const mockObservation: PageObservation = {
+      url: "https://shop.example.com",
+      title: "Store",
+      interactiveNodes: [
+        {
+          id: "node-search",
+          role: "button",
+          name: "Search Button",
+          selector: "button.search",
+          bounds: { x: 10, y: 10, width: 50, height: 20 },
+          isInteractive: true
+        }
+      ],
+      timestamp: Date.now()
+    };
+
+    const result = await orchestrator.handleObservation("task-step-mode", mockObservation);
+    expect(result.requiresApproval).toBe(true);
+    expect(result.action?.type).toBe("CLICK");
+    expect(session.state).toBe("WAITING_FOR_APPROVAL");
+    expect(result.summary).toContain("Click search button");
+
+    // User approves step
+    const approvedAction = orchestrator.handleApprovalDecision("task-step-mode", true);
+    expect(approvedAction).toBeDefined();
+    expect(approvedAction?.type).toBe("CLICK");
+    expect(session.state).toBe("EXECUTING");
+  });
 });

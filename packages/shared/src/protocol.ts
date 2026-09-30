@@ -52,9 +52,13 @@ export const PageObservationSchema = z.object({
 
 export type PageObservation = z.infer<typeof PageObservationSchema>;
 
+export const ExecutionModeSchema = z.enum(["AUTONOMOUS", "STEP_APPROVAL"]);
+export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
+
 export const TaskCreateRequestSchema = z.object({
   goal: z.string().min(3),
-  url: z.string().url().optional()
+  url: z.string().url().optional(),
+  mode: ExecutionModeSchema.default("AUTONOMOUS").optional()
 });
 
 export type TaskCreateRequest = z.infer<typeof TaskCreateRequestSchema>;
