@@ -3,10 +3,13 @@ import { extractSemanticNodes, detectSecurityChallenge } from "@difm/a11y-tree";
 import type { PageObservation, AgentAction } from "@difm/shared";
 import { executeAgentAction } from "../src/executor.js";
 import { findMatchingAdapter } from "../src/adapters/index.js";
+import { initBillSnooper } from "../src/snooper/index.js";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   main() {
+    initBillSnooper();
+
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === "CAPTURE_OBSERVATION") {
         const nodes = extractSemanticNodes(document.body);
