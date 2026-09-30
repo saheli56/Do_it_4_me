@@ -3431,6 +3431,8 @@ export function App() {
                 "Compare Sony WH-1000XM5 on Amazon and Flipkart",
                 "Add Sony WH-1000XM5 to Flipkart cart",
                 "Watch Sony WH-1000XM5 on Amazon under 30000",
+                "Return recent order on Amazon",
+                "Return defective item on Flipkart",
                 "Pay electricity bill on CESC",
                 "Autofill contact & feedback form"
               ].map((suggestion) => (

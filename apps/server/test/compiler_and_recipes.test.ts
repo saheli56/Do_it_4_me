@@ -88,4 +88,34 @@ describe("Workflow Compiler & Deterministic Recipes", () => {
     const validated = WorkflowPlanSchema.safeParse(plan);
     expect(validated.success).toBe(true);
   });
+
+  it("compiles Amazon automated return and refund goals", async () => {
+    const goal = "Return the blue shirt from Amazon because it's too large";
+    const plan = await compiler.compileGoal(goal);
+
+    expect(plan.domain).toBe("amazon");
+    expect(plan.goalType).toBe("RETURN_OR_REFUND");
+    expect(plan.targetUrl).toContain("amazon.in/gp/css/order-history");
+    expect(plan.parameters.itemMatchQuery).toContain("blue shirt");
+    expect(plan.parameters.returnReason).toContain("Wrong size");
+    expect(plan.steps.some((s) => s.type === "RETURN_ITEM")).toBe(true);
+
+    const validated = WorkflowPlanSchema.safeParse(plan);
+    expect(validated.success).toBe(true);
+  });
+
+  it("compiles Flipkart automated return goals for defective items", async () => {
+    const goal = "Return defective wireless mouse from flipkart because it's damaged";
+    const plan = await compiler.compileGoal(goal);
+
+    expect(plan.domain).toBe("flipkart");
+    expect(plan.goalType).toBe("RETURN_OR_REFUND");
+    expect(plan.targetUrl).toContain("flipkart.com/account/orders");
+    expect(plan.parameters.itemMatchQuery).toContain("defective wireless mouse");
+    expect(plan.parameters.returnReason).toContain("defective");
+    expect(plan.steps.some((s) => s.type === "RETURN_ITEM")).toBe(true);
+
+    const validated = WorkflowPlanSchema.safeParse(plan);
+    expect(validated.success).toBe(true);
+  });
 });

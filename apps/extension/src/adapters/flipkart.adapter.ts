@@ -253,6 +253,112 @@ export class FlipkartAdapter implements SiteAdapter {
       }
     }
 
+    // 5. RETURN_ITEM step (on Flipkart My Orders or Return Flow)
+    if (
+      step.type === "RETURN_ITEM" ||
+      url.includes("/account/orders") ||
+      url.includes("/order_details") ||
+      url.includes("/returns")
+    ) {
+      const rawQuery = step.type === "RETURN_ITEM" ? step.itemMatchQuery : plan.parameters.itemMatchQuery;
+      const matchQuery = (rawQuery || "").toLowerCase().trim();
+      const rawReason = step.type === "RETURN_ITEM" ? step.returnReason : plan.parameters.returnReason;
+      const returnReason = rawReason || "Item defective or doesn't work";
+
+      // Phase A: On Flipkart Orders List -> Find matching order and click "Return" / "Need Help"
+      if (url.includes("/account/orders") || doc.querySelector("div._2wN1f8, div.row._2MMtq0, div[class*='orderCard' i]")) {
+        const orderCards = Array.from(doc.querySelectorAll("div._2wN1f8, div.row._2MMtq0, div[class*='order' i], div[class*='itemCard' i]"));
+        let targetOrderCard: Element | null = null;
+        let matchedItemTitle = "";
+
+        if (matchQuery && matchQuery !== "recent order") {
+          const keywords = matchQuery.split(/\s+/).filter((k) => k.length > 2);
+          for (const card of orderCards) {
+            const text = (card.textContent || "").toLowerCase();
+            const matches = keywords.some((k) => text.includes(k));
+            if (matches) {
+              targetOrderCard = card;
+              matchedItemTitle = card.querySelector("span, div, a")?.textContent?.trim() || matchQuery;
+              break;
+            }
+          }
+        }
+
+        if (!targetOrderCard && orderCards.length > 0) {
+          targetOrderCard = orderCards[0];
+          matchedItemTitle = targetOrderCard.querySelector("span, div, a")?.textContent?.trim() || "Most Recent Order";
+        }
+
+        if (targetOrderCard) {
+          const returnBtn = (targetOrderCard.querySelector(
+            "button:has-text('Return'), a:has-text('Return'), button._2KpZ6l, a[href*='return'], button[class*='return' i]"
+          ) || Array.from(targetOrderCard.querySelectorAll("button, a")).find((el) => /return|replace/i.test(el.textContent || ""))) as HTMLElement | null;
+
+          if (returnBtn) {
+            returnBtn.click();
+            return {
+              handled: true,
+              navigated: true,
+              action: {
+                type: "CLICK",
+                target: { id: "flipkart-return-btn", name: `Return Item (${matchedItemTitle})`, role: "button", selector: "button:has-text('Return')" },
+                description: `Initiating Flipkart return process for "${matchedItemTitle}"`
+              }
+            };
+          }
+        }
+      }
+
+      // Phase B: Return Reason Selection Radio / Dropdown
+      const reasonRadios = Array.from(doc.querySelectorAll("input[type='radio'][name*='reason' i], label[class*='reason' i], div._1edr6_"));
+      if (reasonRadios.length > 0) {
+        const lowerReason = returnReason.toLowerCase();
+        let targetRadio = reasonRadios.find((r) => {
+          const text = (r.textContent || (r as HTMLInputElement).value || "").toLowerCase();
+          return (
+            (lowerReason.includes("size") && (text.includes("size") || text.includes("fit") || text.includes("large") || text.includes("small"))) ||
+            (lowerReason.includes("defective") && (text.includes("defective") || text.includes("damaged") || text.includes("work"))) ||
+            (lowerReason.includes("quality") && (text.includes("quality") || text.includes("expected"))) ||
+            (lowerReason.includes("needed") && text.includes("needed"))
+          );
+        }) || reasonRadios[0];
+
+        if (targetRadio) {
+          (targetRadio as HTMLElement).click();
+        }
+
+        const continueBtn = (doc.querySelector(
+          "button._2KpZ6l._2U9uAL, button:has-text('CONTINUE'), button:has-text('Continue'), button[type='submit']"
+        ) || Array.from(doc.querySelectorAll("button")).find((b) => /continue|proceed|next/i.test(b.textContent || ""))) as HTMLElement | null;
+
+        if (continueBtn) {
+          continueBtn.click();
+          return {
+            handled: true,
+            navigated: true,
+            action: {
+              type: "CLICK",
+              target: { id: "flipkart-continue-reason", name: "Continue with return reason", role: "button", selector: "button:has-text('CONTINUE')" },
+              description: `Selected Flipkart return reason: "${returnReason}" and continued`
+            }
+          };
+        }
+      }
+
+      // Phase C: Review & Final Submission Ready
+      const submitReturnBtn = doc.querySelector(
+        "button:has-text('CONFIRM RETURN'), button:has-text('SUBMIT REQUEST'), button:has-text('Confirm Return')"
+      );
+
+      if (submitReturnBtn || url.includes("/confirm") || url.includes("/summary")) {
+        return {
+          handled: true,
+          completed: true,
+          summary: `Flipkart return request prepared successfully! Reason: "${returnReason}", Refund: Original Source. Final confirmation is ready for your 1-click submission.`
+        };
+      }
+    }
+
     return { handled: false };
   }
 

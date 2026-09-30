@@ -18,6 +18,78 @@ export class IntentCompiler {
     const rawGoal = goal.trim();
     const lower = rawGoal.toLowerCase();
 
+    // 0. Return & Refund Workflows (Amazon, Flipkart, etc.)
+    if (
+      lower.includes("return") ||
+      lower.includes("refund") ||
+      lower.includes("replace") ||
+      lower.includes("return item") ||
+      lower.includes("return order")
+    ) {
+      let domain: WorkflowDomain = "amazon";
+      let targetUrl = "https://www.amazon.in/gp/css/order-history";
+
+      if (lower.includes("flipkart") || contextUrl.includes("flipkart")) {
+        domain = "flipkart";
+        targetUrl = "https://www.flipkart.com/account/orders";
+      }
+
+      let reason = "Item defective or doesn't work";
+      if (/too\s+large|too\s+small|wrong\s+size|size\s+issue|size\s+not\s+fitting|fit/i.test(rawGoal)) {
+        reason = "Wrong size / Size issue";
+      } else if (/defective|damaged|broken|not\s+working|does\s*not\s*work|dead/i.test(rawGoal)) {
+        reason = "Item defective or doesn't work";
+      } else if (/poor\s+quality|quality\s+issue|not\s+as\s+described|different\s+item/i.test(rawGoal)) {
+        reason = "Quality not as expected";
+      } else if (/no\s+longer\s+needed|not\s+needed|mistake/i.test(rawGoal)) {
+        reason = "No longer needed";
+      }
+
+      let itemQuery = rawGoal
+        .replace(/^return\s+(?:the\s+)?/i, "")
+        .replace(/^request\s+refund\s+(?:for\s+)?/i, "")
+        .replace(/^replace\s+(?:the\s+)?/i, "")
+        .replace(/on\s+amazon(?:\.in)?/i, "")
+        .replace(/from\s+amazon(?:\.in)?/i, "")
+        .replace(/to\s+amazon(?:\.in)?/i, "")
+        .replace(/on\s+flipkart/i, "")
+        .replace(/from\s+flipkart/i, "")
+        .replace(/to\s+flipkart/i, "")
+        .replace(/because\s+.*$/i, "")
+        .replace(/due\s+to\s+.*$/i, "")
+        .replace(/as\s+it.*$/i, "")
+        .replace(/order\s*$/i, "")
+        .trim();
+
+      if (!itemQuery || itemQuery.length < 2) {
+        itemQuery = "recent order";
+      }
+
+      return {
+        id: `plan_return_${Date.now()}`,
+        domain,
+        goalType: "RETURN_OR_REFUND",
+        targetUrl,
+        parameters: {
+          itemMatchQuery: itemQuery,
+          returnReason: reason,
+          refundMethod: "ORIGINAL_PAYMENT_METHOD"
+        },
+        steps: [
+          { type: "NAVIGATE", url: targetUrl, description: `Navigate to ${domain === "flipkart" ? "Flipkart My Orders" : "Amazon Your Orders"}` },
+          {
+            type: "RETURN_ITEM",
+            itemMatchQuery: itemQuery,
+            returnReason: reason,
+            refundMethod: "ORIGINAL_PAYMENT_METHOD",
+            description: `Locate "${itemQuery}", select reason "${reason}", and prepare return/refund to original payment method`
+          },
+          { type: "COMPLETE", summary: `Return process prepared for "${itemQuery}". Ready for your final 1-click confirmation.` }
+        ],
+        createdAt: Date.now()
+      };
+    }
+
     // 1. Instant Zero-Token Heuristic Compiler for Top Sites
     // Multi-Store Price Comparison (e.g. "compare price of X on amazon and flipkart")
     if (
