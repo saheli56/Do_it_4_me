@@ -41,6 +41,112 @@ export async function createServer() {
     return { status: "ok", timestamp: Date.now() };
   });
 
+  // Mock Amazon Orders & Return Simulation Playground for Safe Testing
+  app.get("/mock-amazon-orders", async (req, reply) => {
+    reply.type("text/html");
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Amazon.in - Your Orders</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #eaeded; margin: 0; padding: 20px; color: #0f1111; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 20px; }
+    .order-card { background: #fff; border: 1px solid #d5d9d9; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+    .order-header { background: #f0f2f2; padding: 12px 18px; display: flex; justify-content: space-between; font-size: 12px; color: #565959; border-bottom: 1px solid #d5d9d9; }
+    .order-body { padding: 18px; display: flex; justify-content: space-between; align-items: center; }
+    .yo-card-title { font-size: 16px; font-weight: bold; color: #007185; margin-bottom: 6px; }
+    .item-meta { font-size: 13px; color: #565959; }
+    .return-or-replace-button { background: #fff; border: 1px solid #d5d9d9; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; text-decoration: none; color: #0f1111; font-weight: 500; display: inline-block; box-shadow: 0 2px 5px rgba(213,217,217,0.5); }
+    .return-or-replace-button:hover { background: #f7fafa; }
+    .return-panel { display: none; background: #fff; border: 1px solid #d5d9d9; border-radius: 8px; padding: 24px; margin-top: 16px; }
+    select, textarea { width: 100%; padding: 8px; margin-top: 6px; margin-bottom: 12px; border: 1px solid #888; border-radius: 4px; box-sizing: border-box; }
+    input[type="submit"], button.submit-btn { background: #ffd814; border: 1px solid #fcd200; border-radius: 8px; padding: 10px 20px; font-weight: bold; cursor: pointer; }
+    input[type="submit"]:hover { background: #f7ca00; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Your Orders (Safe Test Simulator)</h1>
+
+    <div class="order-card" id="order-1">
+      <div class="order-header">
+        <div>ORDER PLACED: 26 September 2026</div>
+        <div>TOTAL: ₹1,299.00</div>
+        <div>ORDER # 402-9182341-9281723</div>
+      </div>
+      <div class="order-body">
+        <div>
+          <div class="yo-card-title">Classic Blue Cotton Shirt</div>
+          <div class="item-meta">Size: XL | Sold by: Retail Brand Store</div>
+        </div>
+        <div>
+          <a class="return-or-replace-button" href="#return-form" onclick="openReturnForm('Classic Blue Cotton Shirt')">Return or replace items</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="order-card" id="order-2">
+      <div class="order-header">
+        <div>ORDER PLACED: 18 September 2026</div>
+        <div>TOTAL: ₹29,990.00</div>
+        <div>ORDER # 402-5819204-1029384</div>
+      </div>
+      <div class="order-body">
+        <div>
+          <div class="yo-card-title">Sony WH-1000XM5 Noise Cancelling Headphones</div>
+          <div class="item-meta">Color: Black | Electronic Device</div>
+        </div>
+        <div>
+          <a class="return-or-replace-button" href="#return-form" onclick="openReturnForm('Sony WH-1000XM5')">Return or replace items</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="return-panel" class="return-panel">
+      <h2 id="return-item-heading">Return Items: Choose a reason</h2>
+      <form onsubmit="proceedToSummary(event)">
+        <label for="reasonCode"><b>Why are you returning this?</b></label>
+        <select id="reasonCode" name="reasonCode">
+          <option value="">Select a reason</option>
+          <option value="DEFECTIVE">Item defective or doesn't work</option>
+          <option value="TOO_LARGE">Wrong size / Size issue (Too large)</option>
+          <option value="TOO_SMALL">Wrong size / Size issue (Too small)</option>
+          <option value="QUALITY">Quality not as expected</option>
+          <option value="NOT_NEEDED">No longer needed</option>
+        </select>
+
+        <label for="comment"><b>Comments:</b></label>
+        <textarea id="comment" name="comment" rows="2" placeholder="Tell us more..."></textarea>
+
+        <input type="submit" name="continue" value="Continue" />
+      </form>
+    </div>
+
+    <div id="summary-panel" class="return-panel" style="background: #f0fdf4; border-color: #86efac;">
+      <h2 style="color: #166534;">✓ Return Request Summary Ready for Review</h2>
+      <p><b>Refund Destination:</b> Original Payment Method (Credit Card)</p>
+      <p><b>Pickup Schedule:</b> Free Doorstep Pickup Scheduled for Tomorrow 10:00 AM - 1:00 PM</p>
+      <input type="submit" value="Confirm your return" style="background: #16a34a; color: #fff; border-color: #15803d;" onclick="alert('Return Submitted Successfully in Simulator!')" />
+    </div>
+  </div>
+
+  <script>
+    function openReturnForm(title) {
+      document.getElementById('return-panel').style.display = 'block';
+      document.getElementById('return-item-heading').innerText = 'Return Item: ' + title;
+    }
+    function proceedToSummary(e) {
+      e.preventDefault();
+      document.getElementById('return-panel').style.display = 'none';
+      document.getElementById('summary-panel').style.display = 'block';
+    }
+  </script>
+</body>
+</html>`;
+  });
+
   // Bill Document Extraction Endpoint (Drag & Drop / Paste)
   app.post("/extract-bill", async (req, reply) => {
     const body = req.body as {

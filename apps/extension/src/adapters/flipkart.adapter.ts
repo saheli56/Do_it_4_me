@@ -52,7 +52,7 @@ export class FlipkartAdapter implements SiteAdapter {
   domain = "flipkart";
 
   matches(url: string): boolean {
-    return /flipkart\.com/i.test(url);
+    return /flipkart\.com|mock-flipkart/i.test(url);
   }
 
   async executeStep(

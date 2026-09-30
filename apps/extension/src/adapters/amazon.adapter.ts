@@ -5,7 +5,7 @@ export class AmazonAdapter implements SiteAdapter {
   name = "AmazonAdapter";
 
   matches(url: string): boolean {
-    return /amazon\.(in|com|co\.uk|de|co\.jp|ca|fr|it|es)/i.test(url);
+    return /amazon\.(in|com|co\.uk|de|co\.jp|ca|fr|it|es)|mock-amazon/i.test(url);
   }
 
   async executeStep(
