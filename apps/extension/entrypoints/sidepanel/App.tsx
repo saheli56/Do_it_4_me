@@ -3436,12 +3436,22 @@ export function App() {
             <div class="flex items-center justify-between bg-zinc-950/80 px-2.5 py-1.5 rounded-lg border border-white/[0.07] shadow-inner">
               <div class="flex items-center gap-1.5 text-[11px]">
                 <span class="text-zinc-400 font-medium">Mode:</span>
-                <span class={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                <span class={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
                   executionMode === "AUTONOMOUS"
                     ? "text-emerald-400 bg-emerald-950/50 border border-emerald-500/30"
                     : "text-amber-400 bg-amber-950/50 border border-amber-500/30"
                 }`}>
-                  {executionMode === "AUTONOMOUS" ? "⚡ Autopilot" : "🛡️ Co-Pilot"}
+                  {executionMode === "AUTONOMOUS" ? (
+                    <>
+                      <LightningIcon size={11} class="fill-current" />
+                      <span>Autopilot</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheckIcon size={11} />
+                      <span>Co-Pilot</span>
+                    </>
+                  )}
                 </span>
               </div>
               <div class="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-md border border-white/[0.06]">
@@ -3455,7 +3465,8 @@ export function App() {
                   }`}
                   title="Autopilot Mode: Agent executes all taps and workflow steps automatically without asking for approval."
                 >
-                  <span>⚡ Auto</span>
+                  <LightningIcon size={11} class="fill-current" />
+                  <span>Auto</span>
                 </button>
                 <button
                   type="button"
@@ -3467,7 +3478,8 @@ export function App() {
                   }`}
                   title="Co-Pilot Mode: Agent pauses and asks for your approval before every tap, click, or step."
                 >
-                  <span>🛡️ Step Approval</span>
+                  <ShieldCheckIcon size={11} />
+                  <span>Step Approval</span>
                 </button>
               </div>
             </div>
@@ -3653,8 +3665,15 @@ export function App() {
                 <ShieldCheckIcon size={20} class="text-amber-400 shrink-0 mt-0.5" />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
-                      {executionMode === "STEP_APPROVAL" ? "🛡️ Co-Pilot Step Approval" : "⚠️ Confirmation Required"}
+                    <span class="text-[10px] uppercase font-bold tracking-wider text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
+                      {executionMode === "STEP_APPROVAL" ? (
+                        <>
+                          <ShieldCheckIcon size={11} />
+                          <span>Co-Pilot Step Approval</span>
+                        </>
+                      ) : (
+                        <span>⚠️ Confirmation Required</span>
+                      )}
                     </span>
                   </div>
                   <h3 class="text-xs font-bold text-zinc-100 mt-1.5">Action Approval</h3>
