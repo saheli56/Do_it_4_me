@@ -3123,10 +3123,10 @@ export function App() {
       <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2.5 min-w-0">
           <div
-            class="w-7 h-7 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 bg-black/95 ring-1 ring-white/10 transition-all duration-300"
+            class="w-7 h-7 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 bg-zinc-950/90 ring-1 ring-white/10 transition-all duration-300"
             style={{
-              borderColor: `${currentThemeStyles.previewColor}88`,
-              boxShadow: `0 0 12px ${currentThemeStyles.previewColor}44`
+              borderColor: `${currentThemeStyles.previewColor}66`,
+              boxShadow: `0 0 12px ${currentThemeStyles.previewColor}33`
             }}
           >
             <DifmLogoIcon
@@ -3134,6 +3134,8 @@ export function App() {
               class="w-full h-full p-0.5"
               gradientFrom={currentThemeStyles.gradientFrom}
               gradientTo={currentThemeStyles.gradientTo}
+              glowColor={currentThemeStyles.previewColor}
+              id={`header_${accentColor}`}
             />
           </div>
           <div class="flex items-center gap-1.5 min-w-0">
@@ -3771,17 +3773,18 @@ export function App() {
               {logs.length === 0 ? (
                 <div class="h-full flex flex-col items-center justify-center text-zinc-400 text-center py-6 space-y-2">
                   <div
-                    class="w-10 h-10 rounded-xl border flex items-center justify-center bg-black/95 shadow-lg transition-all p-1.5"
+                    class="w-10 h-10 rounded-xl border flex items-center justify-center bg-zinc-900/80 shadow-lg transition-all"
                     style={{
-                      borderColor: `${currentThemeStyles.previewColor}66`,
-                      boxShadow: `0 0 16px ${currentThemeStyles.previewColor}33`
+                      borderColor: `${currentThemeStyles.previewColor}40`,
+                      boxShadow: `0 0 16px ${currentThemeStyles.previewColor}20`
                     }}
                   >
                     <DifmLogoIcon
                       size={24}
-                      class="w-full h-full"
                       gradientFrom={currentThemeStyles.gradientFrom}
                       gradientTo={currentThemeStyles.gradientTo}
+                      glowColor={currentThemeStyles.previewColor}
+                      id={`idle_${accentColor}`}
                     />
                   </div>
                   <div>
