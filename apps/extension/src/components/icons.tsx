@@ -6,7 +6,25 @@ interface IconProps extends JSX.SVGAttributes<SVGSVGElement> {
   class?: string;
 }
 
-export function DifmLogoIcon({ size = 20, class: className = "", ...props }: IconProps) {
+interface DifmLogoIconProps extends IconProps {
+  gradientFrom?: string;
+  gradientTo?: string;
+  glowColor?: string;
+  id?: string;
+}
+
+export function DifmLogoIcon({
+  size = 20,
+  class: className = "",
+  gradientFrom = "#6366f1",
+  gradientTo = "#38bdf8",
+  glowColor,
+  id = "difm",
+  ...props
+}: DifmLogoIconProps) {
+  const gradId = `difmGrad_${id}_${gradientFrom.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const effectiveGlow = glowColor || gradientTo;
+
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -17,38 +35,36 @@ export function DifmLogoIcon({ size = 20, class: className = "", ...props }: Ico
       {...props}
     >
       <defs>
-        <linearGradient id="difmDGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a855f7" />
-          <stop offset="50%" stopColor="#6366f1" />
-          <stop offset="100%" stopColor="#38bdf8" />
+        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={gradientFrom} />
+          <stop offset="100%" stopColor={gradientTo} />
         </linearGradient>
-        <linearGradient id="difmArrowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#38bdf8" />
-          <stop offset="100%" stopColor="#00f0ff" />
-        </linearGradient>
-        <filter id="difmGlow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#38bdf8" floodOpacity="0.6" />
+        <filter id={`${gradId}_glow`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor={effectiveGlow} floodOpacity="0.5" />
         </filter>
       </defs>
-      {/* Outer D filled block */}
+
+      {/* Main D Outer Backbone */}
       <path
-        d="M20 16 C20 13 23 11 26 11 H50 C74 11 88 27 88 50 C88 73 74 89 50 89 H26 C23 89 20 87 20 84 Z"
-        fill="none"
-        stroke="url(#difmDGrad)"
-        strokeWidth="12"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M 32 20 L 62 20 C 79 20 93 33 93 50 C 93 67 79 80 62 80 L 32 80 L 48 65 L 60 65 C 69 65 77 58 77 50 C 77 42 69 35 60 35 L 45 35 Z"
+        fill={`url(#${gradId})`}
+        filter={`url(#${gradId}_glow)`}
       />
-      {/* Dynamic Arrow */}
+
+      {/* Primary Speed Line & Forward Arrow Head */}
       <path
-        d="M32 32 L64 50 L32 68 L44 50 Z"
-        fill="url(#difmArrowGrad)"
-        filter="url(#difmGlow)"
+        d="M 27 42 C 27 39.5 29 37.5 31.5 37.5 H 49 L 63 50 L 49 62.5 H 31.5 C 29 62.5 27 60.5 27 58 C 27 55.5 29 53.5 31.5 53.5 H 43 L 46.5 50 L 43 46.5 H 31.5 C 29 46.5 27 44.5 27 42 Z"
+        fill={`url(#${gradId})`}
       />
-      {/* Speed streaks */}
-      <line x1="72" y1="36" x2="88" y2="36" stroke="#00f0ff" strokeWidth="4" strokeLinecap="round" />
-      <line x1="76" y1="50" x2="94" y2="50" stroke="#00f0ff" strokeWidth="5" strokeLinecap="round" />
-      <line x1="72" y1="64" x2="88" y2="64" stroke="#00f0ff" strokeWidth="4" strokeLinecap="round" />
+
+      {/* Speed Line 1 (Top Left) */}
+      <rect x="10" y="39" width="14" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.85" />
+
+      {/* Speed Line 2 (Middle Left) */}
+      <rect x="4" y="47" width="22" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.95" />
+
+      {/* Speed Line 3 (Bottom Left) */}
+      <rect x="14" y="55" width="12" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.75" />
     </svg>
   );
 }
