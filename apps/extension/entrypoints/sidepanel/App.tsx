@@ -19,6 +19,7 @@ import type {
   BillExtractResult,
   BillingCycle
 } from "@difm/shared";
+import { DIFM_LOGO_DATA_URI } from "../../src/components/logo-base64";
 import {
   DifmLogoIcon,
   LightningIcon,
@@ -3123,19 +3124,16 @@ export function App() {
       <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
         <div class="flex items-center gap-2.5 min-w-0">
           <div
-            class="w-7 h-7 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 bg-zinc-950/90 ring-1 ring-white/10 transition-all duration-300"
+            class="w-7 h-7 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 bg-black ring-1 ring-white/10 transition-all duration-300"
             style={{
-              borderColor: `${currentThemeStyles.previewColor}66`,
-              boxShadow: `0 0 12px ${currentThemeStyles.previewColor}33`
+              borderColor: `${currentThemeStyles.previewColor}88`,
+              boxShadow: `0 0 10px ${currentThemeStyles.previewColor}44`
             }}
           >
-            <DifmLogoIcon
-              size={18}
-              class="w-full h-full p-0.5"
-              gradientFrom={currentThemeStyles.gradientFrom}
-              gradientTo={currentThemeStyles.gradientTo}
-              glowColor={currentThemeStyles.previewColor}
-              id={`header_${accentColor}`}
+            <img
+              src={DIFM_LOGO_DATA_URI}
+              alt="DIFM Logo"
+              class="w-full h-full object-contain p-0.5"
             />
           </div>
           <div class="flex items-center gap-1.5 min-w-0">
@@ -3773,18 +3771,16 @@ export function App() {
               {logs.length === 0 ? (
                 <div class="h-full flex flex-col items-center justify-center text-zinc-400 text-center py-6 space-y-2">
                   <div
-                    class="w-10 h-10 rounded-xl border flex items-center justify-center bg-zinc-900/80 shadow-lg transition-all"
+                    class="w-10 h-10 rounded-xl border flex items-center justify-center bg-black shadow-lg transition-all p-1"
                     style={{
-                      borderColor: `${currentThemeStyles.previewColor}40`,
-                      boxShadow: `0 0 16px ${currentThemeStyles.previewColor}20`
+                      borderColor: `${currentThemeStyles.previewColor}66`,
+                      boxShadow: `0 0 16px ${currentThemeStyles.previewColor}33`
                     }}
                   >
-                    <DifmLogoIcon
-                      size={24}
-                      gradientFrom={currentThemeStyles.gradientFrom}
-                      gradientTo={currentThemeStyles.gradientTo}
-                      glowColor={currentThemeStyles.previewColor}
-                      id={`idle_${accentColor}`}
+                    <img
+                      src={DIFM_LOGO_DATA_URI}
+                      alt="DIFM Agent"
+                      class="w-full h-full object-contain"
                     />
                   </div>
                   <div>
