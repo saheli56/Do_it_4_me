@@ -6,6 +6,53 @@ interface IconProps extends JSX.SVGAttributes<SVGSVGElement> {
   class?: string;
 }
 
+export function DifmLogoIcon({ size = 20, class: className = "", ...props }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      class={`inline-block shrink-0 align-middle ${className}`}
+      {...props}
+    >
+      <defs>
+        <linearGradient id="difmDGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="50%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+        <linearGradient id="difmArrowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#00f0ff" />
+        </linearGradient>
+        <filter id="difmGlow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#38bdf8" floodOpacity="0.6" />
+        </filter>
+      </defs>
+      {/* Outer D filled block */}
+      <path
+        d="M20 16 C20 13 23 11 26 11 H50 C74 11 88 27 88 50 C88 73 74 89 50 89 H26 C23 89 20 87 20 84 Z"
+        fill="none"
+        stroke="url(#difmDGrad)"
+        strokeWidth="12"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Dynamic Arrow */}
+      <path
+        d="M32 32 L64 50 L32 68 L44 50 Z"
+        fill="url(#difmArrowGrad)"
+        filter="url(#difmGlow)"
+      />
+      {/* Speed streaks */}
+      <line x1="72" y1="36" x2="88" y2="36" stroke="#00f0ff" strokeWidth="4" strokeLinecap="round" />
+      <line x1="76" y1="50" x2="94" y2="50" stroke="#00f0ff" strokeWidth="5" strokeLinecap="round" />
+      <line x1="72" y1="64" x2="88" y2="64" stroke="#00f0ff" strokeWidth="4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function LightningIcon({ size = 16, class: className = "", ...props }: IconProps) {
   return (
     <svg

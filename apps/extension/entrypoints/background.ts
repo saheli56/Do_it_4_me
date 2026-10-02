@@ -175,6 +175,7 @@ async function inspectCommerceTask(task: PendingTaskItem): Promise<void> {
 
       if (isPriceDrop) {
         const notifId = `commerce-drop-${task.id}`;
+        const now = Date.now();
         const lastNotifiedPrice = priceCond?.lastNotifiedPrice;
         const lastNotifiedAt = priceCond?.lastNotifiedAt || 0;
         const isNewPriceOrCooldownPassed =
@@ -191,7 +192,7 @@ async function inspectCommerceTask(task: PendingTaskItem): Promise<void> {
         });
 
         if (isNewPriceOrCooldownPassed) {
-          const notifOptions: chrome.notifications.NotificationOptions = {
+          const notifOptions: chrome.notifications.NotificationOptions<true> = {
             type: "basic",
             iconUrl: chrome.runtime.getURL("icon-128.png"),
             title: `🎯 Price Target Met: ${task.title}`,

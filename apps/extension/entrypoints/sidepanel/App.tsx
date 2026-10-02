@@ -20,6 +20,7 @@ import type {
   BillingCycle
 } from "@difm/shared";
 import {
+  DifmLogoIcon,
   LightningIcon,
   ClockIcon,
   CheckCircleIcon,
@@ -3120,13 +3121,22 @@ export function App() {
 
       {/* Header Section */}
       <header class="relative z-20 flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
-        <div class="flex items-center gap-2 min-w-0">
-          <div class="w-6 h-6 rounded-lg accent-gradient-bg flex items-center justify-center shadow-glow-sm shrink-0">
-            <SparkleIcon size={13} class="text-white" />
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-7 h-7 rounded-lg overflow-hidden border border-indigo-500/40 flex items-center justify-center shadow-glow-sm shrink-0 bg-zinc-950 ring-1 ring-white/10 hover:border-indigo-400 transition-colors">
+            <img
+              src={typeof chrome !== "undefined" && chrome?.runtime?.getURL ? chrome.runtime.getURL("icon-128.png") : "/icon-128.png"}
+              alt="DIFM Logo"
+              class="w-full h-full object-cover"
+            />
           </div>
-          <h1 class="text-xs sm:text-sm font-bold text-zinc-100 truncate tracking-tight">
-            Do It For Me
-          </h1>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <h1 class="text-xs sm:text-sm font-bold text-zinc-100 truncate tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-200 to-indigo-200 bg-clip-text text-transparent">
+              Do It For Me
+            </h1>
+            <span class="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              AGENT
+            </span>
+          </div>
         </div>
 
         {/* Profile Vault Quick Switcher, Live Status & Settings Icon Button */}
