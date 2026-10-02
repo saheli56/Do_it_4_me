@@ -24,6 +24,12 @@ export default defineConfig({
       "48": "icon-48.png",
       "128": "icon-128.png"
     },
+    web_accessible_resources: [
+      {
+        resources: ["icon-16.png", "icon-48.png", "icon-128.png", "icon-256.png", "logo-master.png"],
+        matches: ["<all_urls>"]
+      }
+    ],
     side_panel: {
       default_path: "entrypoints/sidepanel/index.html"
     }

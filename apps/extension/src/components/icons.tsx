@@ -16,14 +16,12 @@ interface DifmLogoIconProps extends IconProps {
 export function DifmLogoIcon({
   size = 20,
   class: className = "",
-  gradientFrom = "#6366f1",
+  gradientFrom = "#ffffff",
   gradientTo = "#38bdf8",
-  glowColor,
   id = "difm",
   ...props
 }: DifmLogoIconProps) {
-  const gradId = `difmGrad_${id}_${gradientFrom.replace(/[^a-zA-Z0-9]/g, "")}`;
-  const effectiveGlow = glowColor || gradientTo;
+  const gradId = `difmGrad_${id}`;
 
   return (
     <svg
@@ -31,6 +29,7 @@ export function DifmLogoIcon({
       width={size}
       height={size}
       viewBox="0 0 100 100"
+      fill="none"
       class={`inline-block shrink-0 align-middle ${className}`}
       {...props}
     >
@@ -39,32 +38,28 @@ export function DifmLogoIcon({
           <stop offset="0%" stopColor={gradientFrom} />
           <stop offset="100%" stopColor={gradientTo} />
         </linearGradient>
-        <filter id={`${gradId}_glow`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor={effectiveGlow} floodOpacity="0.5" />
-        </filter>
       </defs>
 
-      {/* Main D Outer Backbone */}
+      {/* Main D Outer Backbone with Chamfers */}
       <path
-        d="M 32 20 L 62 20 C 79 20 93 33 93 50 C 93 67 79 80 62 80 L 32 80 L 48 65 L 60 65 C 69 65 77 58 77 50 C 77 42 69 35 60 35 L 45 35 Z"
-        fill={`url(#${gradId})`}
-        filter={`url(#${gradId}_glow)`}
-      />
-
-      {/* Primary Speed Line & Forward Arrow Head */}
-      <path
-        d="M 27 42 C 27 39.5 29 37.5 31.5 37.5 H 49 L 63 50 L 49 62.5 H 31.5 C 29 62.5 27 60.5 27 58 C 27 55.5 29 53.5 31.5 53.5 H 43 L 46.5 50 L 43 46.5 H 31.5 C 29 46.5 27 44.5 27 42 Z"
+        d="M 34 18 L 62 18 C 79 18 94 32 94 50 C 94 68 79 82 62 82 L 34 82 L 50 66 L 60 66 C 69 66 77 59 77 50 C 77 41 69 34 60 34 L 50 34 Z"
         fill={`url(#${gradId})`}
       />
 
-      {/* Speed Line 1 (Top Left) */}
-      <rect x="10" y="39" width="14" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.85" />
+      {/* Primary Arrow Body */}
+      <path
+        d="M 28 41 C 28 39 30 37 32 37 H 50 L 64 50 L 50 63 H 32 C 30 63 28 61 28 59 C 28 57 30 55 32 55 H 44 L 48 50 L 44 45 H 32 C 30 45 28 43 28 41 Z"
+        fill={`url(#${gradId})`}
+      />
 
-      {/* Speed Line 2 (Middle Left) */}
-      <rect x="4" y="47" width="22" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.95" />
+      {/* Speed Line 1 (Top) */}
+      <rect x="12" y="38" width="13" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.9" />
 
-      {/* Speed Line 3 (Bottom Left) */}
-      <rect x="14" y="55" width="12" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.75" />
+      {/* Speed Line 2 (Middle) */}
+      <rect x="4" y="47" width="21" height="6" rx="3" fill={`url(#${gradId})`} opacity="1" />
+
+      {/* Speed Line 3 (Bottom) */}
+      <rect x="14" y="56" width="11" height="6" rx="3" fill={`url(#${gradId})`} opacity="0.8" />
     </svg>
   );
 }
