@@ -117,14 +117,14 @@ export function detectBillOnDocument(doc: Document, url: string): DetectedBillIn
   let category: TaskCategory = "GENERAL";
   let billingCycle: BillingCycle = "MONTHLY";
 
-  if (host.includes("cesc.co.in") || /cesc\s*(?:limited|electricity)?/i.test(fullText)) {
+  if (host.includes("cesc.co.in") || /\bcesc\b\s*(?:limited|electricity)?/i.test(fullText)) {
     providerName = "CESC Electricity";
     category = "ELECTRICITY";
-  } else if (host.includes("wbsedcl.in") || /wbsedcl/i.test(fullText)) {
+  } else if (host.includes("wbsedcl.in") || /\bwbsedcl\b/i.test(fullText)) {
     providerName = "WBSEDCL Electricity";
     category = "ELECTRICITY";
     billingCycle = "QUARTERLY";
-  } else if (host.includes("bescom") || /bescom/i.test(fullText)) {
+  } else if (host.includes("bescom") || /\bbescom\b/i.test(fullText)) {
     providerName = "BESCOM Electricity";
     category = "ELECTRICITY";
   } else if (host.includes("airtel.in") || /airtel\s*(?:broadband|thanks|xstream|fiber|bill)?/i.test(fullText)) {
@@ -221,8 +221,8 @@ export function detectBillOnDocument(doc: Document, url: string): DetectedBillIn
   if (consumerInput && consumerInput.value && consumerInput.value.length >= 6) {
     consumerNumber = consumerInput.value.trim();
   } else {
-    const consMatch = fullText.match(/(?:Consumer\s*No|Consumer\s*ID|Account\s*No|A\/C\s*No|CA\s*Number|Consumer\s*Number|K\s*No|Customer\s*ID)[\s:]*([A-Za-z0-9\-\/]{6,20})/i);
-    if (consMatch && consMatch[1]) {
+    const consMatch = fullText.match(/(?:Consumer\s*No\b|Consumer\s*ID\b|Account\s*No\b|A\/C\s*No\b|CA\s*Number\b|Consumer\s*Number\b|K\s*No\b|Customer\s*ID\b)\.?[\s:]*([A-Za-z0-9\-\/]{6,20})/i);
+    if (consMatch && consMatch[1] && /\d/.test(consMatch[1])) {
       consumerNumber = consMatch[1].trim();
     }
   }
