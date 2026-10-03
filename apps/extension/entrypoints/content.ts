@@ -29,8 +29,7 @@ export default defineContentScript({
             sendResponse({ ...res });
             return;
           }
-          // Allow DOM to settle and capture fresh observation
-          await new Promise((r) => setTimeout(r, 200));
+          // Immediately extract fresh semantic nodes without artificial delay
           const nodes = extractSemanticNodes(document.body);
           const securityChallenge = detectSecurityChallenge(document);
           const observation: PageObservation = {

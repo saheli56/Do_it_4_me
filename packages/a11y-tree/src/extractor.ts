@@ -227,7 +227,16 @@ const SOCIAL_KEYWORDS = [
   "whatsapp",
   "telegram",
   "social-share",
-  "social_share"
+  "social_share",
+  "myntrainsider",
+  "insider",
+  "become-a-seller",
+  "seller-hub",
+  "download-app",
+  "gift-cards",
+  "gift_card",
+  "help-centre",
+  "customer-care"
 ];
 
 function isSocialElement(element: Element, href?: string, name?: string): boolean {

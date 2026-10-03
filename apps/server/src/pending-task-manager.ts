@@ -30,6 +30,7 @@ export class PendingTaskManager {
         const raw = fs.readFileSync(this.storageFilePath, "utf-8");
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
+          let hasUpdated = false;
           for (const item of parsed) {
             if (item && item.id) {
               if (!Array.isArray(item.executionHistory)) {
@@ -41,8 +42,18 @@ export class PendingTaskManager {
               if (!item.category) {
                 item.category = item.billerInfo?.billType || "GENERAL";
               }
+              // If recurring schedule's nextRunAt is in the past, calculate the next future cycle
+              if (item.schedule && item.schedule.enabled && item.schedule.nextRunAt && item.schedule.nextRunAt <= Date.now()) {
+                if (item.schedule.frequency !== "ONCE") {
+                  item.schedule.nextRunAt = calculateNextRunTime(item.schedule);
+                  hasUpdated = true;
+                }
+              }
               this.tasks.set(item.id, item);
             }
+          }
+          if (hasUpdated) {
+            this.saveToDisk();
           }
         }
       }

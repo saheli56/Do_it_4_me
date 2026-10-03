@@ -9,6 +9,14 @@ import { isValidStateTransition, evaluateRiskTier } from "@difm/shared";
 import type { PlannerService } from "./planner.js";
 import { IntentCompiler } from "./compiler.js";
 
+export interface StoreQuote {
+  price?: number;
+  formattedPrice?: string;
+  title?: string;
+  inStock?: boolean;
+  url?: string;
+}
+
 export interface TaskSession {
   id: string;
   goal: string;
@@ -20,6 +28,7 @@ export interface TaskSession {
   pendingApprovalAction?: AgentAction;
   activeChallenge?: SecurityChallenge;
   plan?: WorkflowPlan;
+  storeQuotes: Record<string, StoreQuote>;
 }
 
 export function normalizeGoalForExecution(rawGoal: string): string {
@@ -40,6 +49,152 @@ export function normalizeGoalForExecution(rawGoal: string): string {
   return rawGoal;
 }
 
+function detectStoreFromUrl(url = ""): string | undefined {
+  const low = url.toLowerCase();
+  if (low.includes("amazon")) return "amazon";
+  if (low.includes("flipkart")) return "flipkart";
+  if (low.includes("myntra")) return "myntra";
+  if (low.includes("croma")) return "croma";
+  if (low.includes("reliancedigital") || low.includes("reliance")) return "reliance";
+  if (low.includes("meesho")) return "meesho";
+  if (low.includes("tatacliq")) return "tatacliq";
+  return undefined;
+}
+
+function extractPriceFromObservation(
+  obs: PageObservation,
+  goalContext?: string
+): { price?: number; formattedPrice?: string; title?: string; inStock?: boolean } | null {
+  const url = (obs.url || "").toLowerCase();
+  const pageTitle = obs.title || "";
+  
+  // Extract key search query tokens from goal if available
+  const queryTokens = (goalContext || "")
+    .toLowerCase()
+    .replace(/compare|price|of|on|and|flipkart|myntra|amazon|croma|store|pages|check|both|report|live|stock|status|which|should|i|choose|under|buy|cart|add/g, " ")
+    .split(/[\s,]+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3);
+
+  // Helper to extract numeric price from text
+  const parsePrice = (text: string): number | null => {
+    // Exclude discount badges, EMI text, and save percentages
+    if (/save\s+[₹$]|flat\s+[₹$]|cashback|coupon|off\b|\/month|\/mo\b|per\s+month/i.test(text)) {
+      return null;
+    }
+    // Match Rs. / ₹ / $ followed by digits
+    const match = text.match(/(?:₹|Rs\.?|\$)\s*([\d,]+(?:\.\d+)?)/i);
+    if (match && match[1]) {
+      const val = parseFloat(match[1].replace(/,/g, ""));
+      if (!isNaN(val) && val >= 50 && val <= 500000) {
+        return Math.round(val);
+      }
+    }
+    return null;
+  };
+
+  // 1. Scrape matching product cards if on search result or listing pages
+  const isSearchPage = url.includes("/search") || url.includes("/s?") || url.includes("?q=") || url.includes("rawquery=");
+  const isProductPage = url.includes("/p/") || url.includes("/dp/") || url.includes("/buy") || url.includes("pid=") || url.includes("/product/");
+
+  let primaryPrice: number | undefined;
+  let matchedProductTitle: string | undefined;
+
+  // If we have query tokens, try to find a card/link matching those tokens first
+  if (queryTokens.length > 0) {
+    let bestMatchScore = 0;
+    let bestMatchedNodeIndex = -1;
+
+    for (let i = 0; i < obs.interactiveNodes.length; i++) {
+      const node = obs.interactiveNodes[i];
+      const nodeText = [node.name || "", node.value || "", node.selector || ""].join(" ").toLowerCase();
+      const matchScore = queryTokens.filter(t => nodeText.includes(t)).length;
+
+      if (matchScore > bestMatchScore && matchScore >= Math.min(2, queryTokens.length)) {
+        bestMatchScore = matchScore;
+        bestMatchedNodeIndex = i;
+      }
+    }
+
+    if (bestMatchedNodeIndex >= 0) {
+      const matchedNode = obs.interactiveNodes[bestMatchedNodeIndex];
+      matchedProductTitle = matchedNode.name ? matchedNode.name.slice(0, 80) : pageTitle;
+
+      // 1a. Check for prices inside the matched node itself
+      const prices: number[] = [];
+      const matches = (matchedNode.name || "").matchAll(/(?:₹|Rs\.?|\$)\s*([\d,]+(?:\.\d+)?)/gi);
+      for (const m of matches) {
+        if (m[1]) {
+          const p = parseFloat(m[1].replace(/,/g, ""));
+          if (!isNaN(p) && p >= 50 && p <= 500000) {
+            prices.push(Math.round(p));
+          }
+        }
+      }
+      if (prices.length > 0) {
+        primaryPrice = Math.min(...prices);
+      } else {
+        // 1b. If the matched title link doesn't contain the price, look at immediate neighboring nodes (e.g. next 3-4 nodes in DOM card)
+        for (let j = bestMatchedNodeIndex; j < Math.min(obs.interactiveNodes.length, bestMatchedNodeIndex + 6); j++) {
+          const neighbor = obs.interactiveNodes[j];
+          const neighborText = neighbor.name || "";
+          const pVal = parsePrice(neighborText);
+          if (pVal) {
+            primaryPrice = pVal;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Look for dedicated primary price elements (matching Flipkart, Amazon, Myntra, etc.) ONLY if on product page or no query tokens
+  if (!primaryPrice && isProductPage) {
+    for (const node of obs.interactiveNodes) {
+      const selector = (node.selector || "").toLowerCase();
+      const name = (node.name || "");
+      
+      // Skip strikethrough / MRP classes
+      if (/strike|mrp|original|crossed|yray8j|line-through/i.test(selector)) {
+        continue;
+      }
+
+      const isPriceClass = /price|_30jeq3|nx9bqj|pdp-price|a-price-whole|offer-price|product-price|final-price/i.test(selector);
+      if (isPriceClass) {
+        const val = parsePrice(name);
+        if (val) {
+          primaryPrice = val;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. If on product page and still no direct match, look in DOM nodes
+  if (!primaryPrice && isProductPage) {
+    for (const node of obs.interactiveNodes) {
+      const text = [node.name || "", node.value || ""].join(" ");
+      const val = parsePrice(text);
+      if (val) {
+        primaryPrice = val;
+        break;
+      }
+    }
+  }
+
+  if (primaryPrice) {
+    const outOfStock = obs.interactiveNodes.some((n) => /out of stock|currently unavailable|sold out/i.test(n.name || ""));
+    return {
+      price: primaryPrice,
+      formattedPrice: `₹${primaryPrice.toLocaleString("en-IN")}`,
+      title: (matchedProductTitle || pageTitle).slice(0, 80),
+      inStock: !outOfStock
+    };
+  }
+
+  return null;
+}
+
 export class TaskOrchestrator {
   private sessions = new Map<string, TaskSession>();
   private planner: PlannerService;
@@ -58,7 +213,8 @@ export class TaskOrchestrator {
       state: "CREATED",
       stepIndex: 0,
       history: [],
-      executionMode: mode
+      executionMode: mode,
+      storeQuotes: {}
     };
     this.sessions.set(taskId, session);
     this.transitionState(session, "UNDERSTANDING");
@@ -101,6 +257,18 @@ export class TaskOrchestrator {
 
     session.lastObservation = observation;
 
+    // Automatically inspect and record store quotes on product/store pages
+    const currentStore = detectStoreFromUrl(observation.url);
+    if (currentStore) {
+      const quote = extractPriceFromObservation(observation, session.goal);
+      if (quote) {
+        session.storeQuotes[currentStore] = {
+          ...quote,
+          url: observation.url
+        };
+      }
+    }
+
     // Check for security challenge (Cloudflare / Captcha / OTP)
     if (observation.securityChallenge) {
       session.activeChallenge = observation.securityChallenge;
@@ -118,7 +286,8 @@ export class TaskOrchestrator {
     const plannedAction = await this.planner.planNextStep(
       session.goal,
       observation,
-      session.history
+      session.history,
+      session.storeQuotes
     );
 
     const targetText =

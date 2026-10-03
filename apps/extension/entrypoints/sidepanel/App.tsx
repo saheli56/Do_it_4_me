@@ -1180,15 +1180,17 @@ export function App() {
     tabId: number,
     currentTaskId: string,
     maxAttempts = 8,
-    initialDelayMs = 500
+    initialDelayMs = 120
   ) => {
-    await new Promise((r) => setTimeout(r, initialDelayMs));
+    if (initialDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, initialDelayMs));
+    }
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const tab = await chrome.tabs.get(tabId);
         if (tab.url?.startsWith("chrome://") || tab.url?.startsWith("about:")) {
-          await new Promise((r) => setTimeout(r, 600));
+          await new Promise((r) => setTimeout(r, 200));
           continue;
         }
 
@@ -1231,7 +1233,7 @@ export function App() {
           );
         });
 
-        await new Promise((r) => setTimeout(r, 450));
+        await new Promise((r) => setTimeout(r, 150));
 
         const retryRes = await new Promise<{ success?: boolean; observation?: PageObservation } | null>((resolve) => {
           chrome.tabs.sendMessage(tabId, { type: "CAPTURE_OBSERVATION" }, (response) => {
@@ -1594,6 +1596,41 @@ export function App() {
   useEffect(() => {
     fetchPendingTasks();
   }, [searchQuery, statusFilter, priorityFilter, sortBy]);
+
+  // Click outside and Escape key handler for dropdowns and popups
+  useEffect(() => {
+    const handleGlobalPointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (isProfileDropdownOpen && !target.closest(".profile-dropdown-container")) {
+        setIsProfileDropdownOpen(false);
+      }
+      if (isMoreMenuOpen && !target.closest(".feature-hub-container")) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsProfileDropdownOpen(false);
+        setIsMoreMenuOpen(false);
+        setIsSettingsModalOpen(false);
+        setIsProfileVaultModalOpen(false);
+        setIsReplayModalOpen(false);
+        setIsSmartSchedulerOpen(false);
+      }
+    };
+
+    if (isProfileDropdownOpen || isMoreMenuOpen) {
+      document.addEventListener("mousedown", handleGlobalPointerDown);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleGlobalPointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProfileDropdownOpen, isMoreMenuOpen]);
 
   useEffect(() => {
     let timer: any = null;
@@ -3140,14 +3177,17 @@ export function App() {
         {/* Profile Vault Quick Switcher, Live Status & Settings Icon Button */}
         <div class="flex items-center gap-1.5 shrink-0">
           {/* Active Profile Pill Switcher */}
-          <div class="relative">
+          <div class="relative profile-dropdown-container">
             {(() => {
               const currentActiveProfile = profiles.find((p) => p.id === activeProfileId) || profiles[0];
               const currentProfileStyles = getProfileColorStyles(currentActiveProfile?.color);
               return (
                 <>
                   <button
-                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setIsProfileDropdownOpen((prev) => !prev);
+                    }}
                     class={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold transition active:scale-95 ${
                       currentProfileStyles.badge
                     } hover:brightness-110`}
@@ -3162,78 +3202,90 @@ export function App() {
 
                   {/* Profile Micro-Dropdown Menu */}
                   {isProfileDropdownOpen && (
-                    <div class="absolute right-0 top-full mt-1.5 w-56 glass-panel rounded-xl shadow-2xl border border-white/[0.1] py-1.5 z-50 animate-scale-in">
-                      <div class="px-2.5 py-1 border-b border-white/[0.06] flex items-center justify-between">
-                        <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
-                          Identity Vault
-                        </span>
-                        <span class="text-[9px] text-zinc-500 font-mono">
-                          {profiles.length} profiles
-                        </span>
-                      </div>
+                    <>
+                      <div
+                        class="fixed inset-0 z-40 bg-transparent"
+                        onClick={() => setIsProfileDropdownOpen(false)}
+                      />
+                      <div class="absolute right-0 top-full mt-1.5 w-56 glass-panel rounded-xl shadow-2xl border border-white/[0.1] py-1.5 z-50 animate-scale-in">
+                        <div class="px-2.5 py-1 border-b border-white/[0.06] flex items-center justify-between">
+                          <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
+                            Identity Vault
+                          </span>
+                          <span class="text-[9px] text-zinc-500 font-mono">
+                            {profiles.length} profiles
+                          </span>
+                        </div>
 
-                      <div class="max-h-48 overflow-y-auto py-1 space-y-0.5 px-1">
-                        {profiles.map((prof) => {
-                          const profStyles = getProfileColorStyles(prof.color);
-                          const isSelected = prof.id === activeProfileId;
-                          return (
-                            <button
-                              key={prof.id}
-                              onClick={() => handleSelectActiveProfile(prof.id)}
-                              class={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
-                                isSelected
-                                  ? "bg-white/[0.08] text-white font-semibold"
-                                  : "text-zinc-300 hover:bg-white/[0.04] hover:text-white"
-                              }`}
-                            >
-                              <div class="flex items-center gap-2 min-w-0">
-                                <div
-                                  class={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 border ${profStyles.badge}`}
-                                >
-                                  {renderProfileIcon(prof.icon, 11)}
-                                </div>
-                                <div class="flex flex-col min-w-0">
-                                  <div class="flex items-center gap-1">
-                                    <span class="text-xs truncate">{prof.label}</span>
-                                    {prof.isDefault && (
-                                      <StarIcon size={9} class="text-amber-400 shrink-0 fill-current" />
-                                    )}
+                        <div class="max-h-48 overflow-y-auto py-1 space-y-0.5 px-1">
+                          {profiles.map((prof) => {
+                            const profStyles = getProfileColorStyles(prof.color);
+                            const isSelected = prof.id === activeProfileId;
+                            return (
+                              <button
+                                key={prof.id}
+                                onClick={() => {
+                                  handleSelectActiveProfile(prof.id);
+                                  setIsProfileDropdownOpen(false);
+                                }}
+                                class={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-left transition ${
+                                  isSelected
+                                    ? "bg-white/[0.08] text-white font-semibold"
+                                    : "text-zinc-300 hover:bg-white/[0.04] hover:text-white"
+                                }`}
+                              >
+                                <div class="flex items-center gap-2 min-w-0">
+                                  <div
+                                    class={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 border ${profStyles.badge}`}
+                                  >
+                                    {renderProfileIcon(prof.icon, 11)}
                                   </div>
-                                  <span class="text-[9px] text-zinc-400 truncate font-mono">
-                                    {[prof.firstName, prof.lastName].filter(Boolean).join(" ") ||
-                                      prof.email ||
-                                      "No credentials"}
-                                  </span>
+                                  <div class="flex flex-col min-w-0">
+                                    <div class="flex items-center gap-1">
+                                      <span class="text-xs truncate">{prof.label}</span>
+                                      {prof.isDefault && (
+                                        <StarIcon size={9} class="text-amber-400 shrink-0 fill-current" />
+                                      )}
+                                    </div>
+                                    <span class="text-[9px] text-zinc-400 truncate font-mono">
+                                      {[prof.firstName, prof.lastName].filter(Boolean).join(" ") ||
+                                        prof.email ||
+                                        "No credentials"}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                              {isSelected && <CheckIcon size={12} class="accent-text shrink-0 ml-1" />}
-                            </button>
-                          );
-                        })}
-                      </div>
+                                {isSelected && <CheckIcon size={12} class="accent-text shrink-0 ml-1" />}
+                              </button>
+                            );
+                          })}
+                        </div>
 
-                      <div class="border-t border-white/[0.06] pt-1 px-1 mt-1 space-y-0.5">
-                        <button
-                          onClick={handleOpenCreateProfile}
-                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-semibold accent-text hover:bg-[var(--accent-bg-subtle)] flex items-center gap-1.5 transition"
-                        >
-                          <PlusIcon size={12} />
-                          <span>Create New Identity</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setIsProfileDropdownOpen(false);
-                            setEditingProfile(null);
-                            setIsCreatingNewProfile(false);
-                            setIsProfileVaultModalOpen(true);
-                          }}
-                          class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-medium text-zinc-300 hover:bg-white/[0.04] hover:text-white flex items-center gap-1.5 transition"
-                        >
-                          <IdentificationCardIcon size={12} />
-                          <span>Manage Vault & Identities</span>
-                        </button>
+                        <div class="border-t border-white/[0.06] pt-1 px-1 mt-1 space-y-0.5">
+                          <button
+                            onClick={() => {
+                              setIsProfileDropdownOpen(false);
+                              handleOpenCreateProfile();
+                            }}
+                            class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-semibold accent-text hover:bg-[var(--accent-bg-subtle)] flex items-center gap-1.5 transition"
+                          >
+                            <PlusIcon size={12} />
+                            <span>Create New Identity</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsProfileDropdownOpen(false);
+                              setEditingProfile(null);
+                              setIsCreatingNewProfile(false);
+                              setIsProfileVaultModalOpen(true);
+                            }}
+                            class="w-full px-2 py-1.5 rounded-lg text-left text-[11px] font-medium text-zinc-300 hover:bg-white/[0.04] hover:text-white flex items-center gap-1.5 transition"
+                          >
+                            <IdentificationCardIcon size={12} />
+                            <span>Manage Vault & Identities</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
                 </>
               );
@@ -3241,9 +3293,12 @@ export function App() {
           </div>
 
           {/* Feature Hub Dropdown Menu */}
-          <div class="relative">
+          <div class="relative feature-hub-container">
             <button
-              onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+              onClick={() => {
+                setIsProfileDropdownOpen(false);
+                setIsMoreMenuOpen((prev) => !prev);
+              }}
               class={`p-1.5 rounded-lg border transition active:scale-95 shrink-0 ${
                 isMoreMenuOpen
                   ? "bg-white/[0.12] border-white/[0.25] text-white"
@@ -3255,7 +3310,12 @@ export function App() {
             </button>
 
             {isMoreMenuOpen && (
-              <div class="absolute right-0 top-full mt-1.5 w-60 glass-panel rounded-xl shadow-2xl border border-white/[0.12] py-1.5 z-50 animate-scale-in">
+              <>
+                <div
+                  class="fixed inset-0 z-40 bg-transparent"
+                  onClick={() => setIsMoreMenuOpen(false)}
+                />
+                <div class="absolute right-0 top-full mt-1.5 w-60 glass-panel rounded-xl shadow-2xl border border-white/[0.12] py-1.5 z-50 animate-scale-in">
                 <div class="px-3 py-1 border-b border-white/[0.06] flex items-center justify-between">
                   <span class="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
                     Feature Hub
@@ -3354,7 +3414,8 @@ export function App() {
                   </button>
                 </div>
               </div>
-            )}
+            </>
+          )}
           </div>
         </div>
       </header>
@@ -5870,7 +5931,16 @@ export function App() {
 
       {/* Multi-Profile Identity Vault Modal */}
       {isProfileVaultModalOpen && (
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in overscroll-none">
+        <div
+          class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in overscroll-none"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsProfileVaultModalOpen(false);
+              setEditingProfile(null);
+              setIsCreatingNewProfile(false);
+            }
+          }}
+        >
           <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-[var(--accent-border)] animate-scale-in">
             {/* Modal Header */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
@@ -6402,7 +6472,14 @@ export function App() {
 
       {/* Visual Execution Replay & Step Inspector Modal */}
       {isReplayModalOpen && (
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 overflow-hidden animate-fade-in">
+        <div
+          class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-2.5 overflow-hidden animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsReplayModalOpen(false);
+            }
+          }}
+        >
           <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg h-[92vh] flex flex-col overflow-hidden border border-[var(--accent-border)] bg-zinc-950/95 animate-scale-in">
             {/* Replay Header */}
             <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
@@ -6779,7 +6856,14 @@ export function App() {
 
       {/* Appearance & Accent Theme Settings Modal */}
       {isSettingsModalOpen && (
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in">
+        <div
+          class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsSettingsModalOpen(false);
+            }
+          }}
+        >
           <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-white/[0.12] bg-zinc-950/95 animate-scale-in">
             {/* Modal Header */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">
@@ -6849,7 +6933,14 @@ export function App() {
 
       {/* AI Smart Task Architect & Auto-Scheduler Modal */}
       {isSmartSchedulerOpen && parsedTaskDraft && (
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in">
+        <div
+          class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-hidden animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsSmartSchedulerOpen(false);
+            }
+          }}
+        >
           <div class="glass-panel rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden border border-white/[0.14] bg-zinc-950/95 animate-scale-in">
             {/* Modal Header */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-zinc-950/90 shrink-0">

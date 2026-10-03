@@ -91,50 +91,69 @@ export class IntentCompiler {
     }
 
     // 1. Instant Zero-Token Heuristic Compiler for Top Sites
-    // Multi-Store Price Comparison (e.g. "compare price of X on amazon and flipkart")
-    if (
-      (lower.includes("compare") && (lower.includes("flipkart") || lower.includes("amazon"))) ||
-      (lower.includes("flipkart") && lower.includes("amazon"))
-    ) {
+    // Multi-Store Price Comparison (e.g. "compare price of X on Myntra and Flipkart", "compare X between Amazon and Myntra")
+    const storeKeywords = ["amazon", "flipkart", "myntra", "croma", "reliance", "meesho", "tatacliq"];
+    const matchedStores = storeKeywords.filter((s) => lower.includes(s));
+
+    if (lower.includes("compare") || matchedStores.length >= 2) {
+      const storesToCompare = matchedStores.length >= 2
+        ? matchedStores.slice(0, 2)
+        : ["myntra", "flipkart"];
+
+      const storeUrls: Record<string, string> = {
+        amazon: "https://www.amazon.in",
+        flipkart: "https://www.flipkart.com",
+        myntra: "https://www.myntra.com",
+        croma: "https://www.croma.com",
+        reliance: "https://www.reliancedigital.in",
+        meesho: "https://www.meesho.com",
+        tatacliq: "https://www.tatacliq.com"
+      };
+
       const priceMatch = lower.match(/(?:below|under|price drop below|less than)\s*(?:₹|rs\.?|inr)?\s*([0-9,]+)/i);
       const maxPrice = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ""), 10) : undefined;
 
       let productQuery = rawGoal
-        .replace(/compare\s+(?:price|prices)?\s*(?:of)?/i, "")
-        .replace(/on amazon and flipkart/i, "")
-        .replace(/on flipkart and amazon/i, "")
-        .replace(/between amazon and flipkart/i, "")
-        .replace(/between flipkart and amazon/i, "")
-        .replace(/across amazon and flipkart/i, "")
-        .replace(/across flipkart and amazon/i, "")
-        .replace(/from amazon and flipkart/i, "")
-        .replace(/from flipkart and amazon/i, "")
+        .replace(/compare\s+(?:the\s+)?(?:price|prices)?\s*(?:of)?/i, "")
+        .replace(/on (?:amazon|flipkart|myntra|croma|reliance|meesho|tatacliq)(?:\.in|\.com)?/gi, "")
+        .replace(/and (?:amazon|flipkart|myntra|croma|reliance|meesho|tatacliq)(?:\.in|\.com)?/gi, "")
+        .replace(/between (?:amazon|flipkart|myntra|croma|reliance|meesho|tatacliq)(?:\.in|\.com)?/gi, "")
+        .replace(/across (?:amazon|flipkart|myntra|croma|reliance|meesho|tatacliq)(?:\.in|\.com)?/gi, "")
+        .replace(/from (?:amazon|flipkart|myntra|croma|reliance|meesho|tatacliq)(?:\.in|\.com)?/gi, "")
+        .replace(/check both store pages.*$/i, "")
+        .replace(/report the live price.*$/i, "")
+        .replace(/and which store.*$/i, "")
         .replace(/under\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
         .replace(/below\s+(?:₹|rs\.?|inr)?\s*[0-9,]+/i, "")
         .trim();
 
-      if (!productQuery || productQuery.length < 3) {
-        productQuery = "Sony WH-1000XM5";
+      if (!productQuery || productQuery.length < 2) {
+        productQuery = "Airdopes 311 Pro TWS";
       }
+
+      const store1 = storesToCompare[0];
+      const store2 = storesToCompare[1];
+      const url1 = storeUrls[store1] || "https://www.myntra.com";
+      const url2 = storeUrls[store2] || "https://www.flipkart.com";
 
       return {
         id: `plan_multistore_${Date.now()}`,
         domain: "multi_store",
         goalType: "MULTI_STORE_PRICE_COMPARE",
-        targetUrl: "https://www.google.com",
+        targetUrl: url1,
         parameters: {
           productQuery,
           productModel: productQuery,
           maxPriceThreshold: maxPrice
         },
         steps: [
-          { type: "NAVIGATE", url: "https://www.amazon.in", description: "Navigate to Amazon for price check" },
-          { type: "SEARCH", query: productQuery, description: `Search Amazon for "${productQuery}"` },
-          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on Amazon` },
-          { type: "NAVIGATE", url: "https://www.flipkart.com", description: "Navigate to Flipkart for price check" },
-          { type: "SEARCH", query: productQuery, description: `Search Flipkart for "${productQuery}"` },
-          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on Flipkart` },
-          { type: "COMPLETE", summary: `Multi-store price comparison completed for "${productQuery}".` }
+          { type: "NAVIGATE", url: url1, description: `Navigate to ${store1.toUpperCase()} for price check` },
+          { type: "SEARCH", query: productQuery, description: `Search ${store1.toUpperCase()} for "${productQuery}"` },
+          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on ${store1.toUpperCase()}` },
+          { type: "NAVIGATE", url: url2, description: `Navigate to ${store2.toUpperCase()} for price check` },
+          { type: "SEARCH", query: productQuery, description: `Search ${store2.toUpperCase()} for "${productQuery}"` },
+          { type: "SELECT_PRODUCT", matchQuery: productQuery, description: `Select matching product on ${store2.toUpperCase()}` },
+          { type: "COMPLETE", summary: `Multi-store price comparison completed across ${store1.toUpperCase()} and ${store2.toUpperCase()} for "${productQuery}".` }
         ],
         createdAt: Date.now()
       };
@@ -283,7 +302,7 @@ export class IntentCompiler {
     }
 
     // 2. One-Shot LLM Intent Compiler (for general custom goals)
-    const candidateModels = [this.model, "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
+    const candidateModels = [this.model, "qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
     for (const m of candidateModels) {
       try {
         const prompt = `You are the DIFM Workflow Plan Compiler.

@@ -61,28 +61,39 @@ CORE CAPABILITIES & EXECUTION RULES:
   * YOU ARE THE AUTOMATED AGENT EXECUTING THIS CHECK AND PURCHASE ON BEHALF OF THE USER.
   * NEVER output FAIL claiming that "Amazon doesn't have an automated price drop alert feature" or "price drop alert is not a native website UI button". You must inspect the live store, find the product, check its live price, and execute the purchase if the condition is met!
   * STEP-BY-STEP EXECUTION FLOW:
-    1. If on store homepage (e.g. amazon.in, flipkart.com):
-       - DO NOT SCROLL on homepage.
-       - Locate search textbox/searchbox (e.g. "Search Amazon.in", "twotabsearchtextbox") and TYPE the product query.
-       - Next step: CLICK Search/Go button.
+    1. If on store homepage or landing page (e.g. amazon.in, flipkart.com, myntra.com):
+       - DO NOT SCROLL on homepage without searching.
+       - Locate search textbox/searchbox (e.g. "Search", "twotabsearchtextbox", "desktop-searchBar") and TYPE the product query.
+       - If the search results do not automatically load after typing: YOU MUST CLICK the search button / search icon (or submit button) to execute the search!
+       - DO NOT output COMPLETE or claim a product is unavailable while still on the store homepage!
     2. If on search results page:
+       - Verify that the URL or page title reflects the search query (e.g. /search, /s?, ?q=, or contains product search results).
        - Carefully check the product title links in the search results.
        - If a matching product result is listed: CLICK its title link immediately to navigate to the product detail page.
-       - If no relevant product matching the user's query exists in the search results:
+       - If no relevant product matching the user's query exists in the actual search results after searching:
          * Output COMPLETE with summary: "Product was not found in the search results on store. No item was added to cart."
        - NEVER output COMPLETE claiming "Item added to cart" while still on the search results page!
-    3. If on the product detail page (e.g. URL has /dp/, or product title & Buy/Cart buttons are visible):
-       - Check the product title, and read the live price shown on the page (e.g. ₹39,990).
-       - Compare live price against the user's target price threshold (e.g. target ₹49,999):
-         * If live price <= target price:
-           -> If previous actions have NOT clicked "Add to Cart" or "Buy Now":
-              YOU MUST OUTPUT A "CLICK" ACTION ON THE "Add to Cart" or "Buy Now" BUTTON (targetId matching "Add to Cart" or "Buy Now").
-              DO NOT OUTPUT COMPLETE YET!
-           -> If previous actions ALREADY clicked "Add to Cart" OR the page is an upsell/cart/sidebar/confirmation overlay:
-              YOU MUST IMMEDIATELY OUTPUT COMPLETE with summary: "Price condition met: Found product at ₹[Price] (below target ₹[Target]). Item added to cart."
-              NEVER CLICK additional "Add to Cart" buttons for recommended, sponsored, related, or upsell products!
-         * If live price > target price: Condition is NOT met.
-           -> Output COMPLETE with summary: "Current price is ₹[Price], which is above the target price threshold of ₹[Target]. Item not added to cart."
+    3. If on the product detail page or search listing (e.g. URL has /dp/, /p/, /buy, /search, or product cards are visible):
+       - Check the product title, and read the LIVE SELLING PRICE shown on the page (e.g. ₹899, ₹1,099, or ₹39,990).
+       - CRITICAL PRICE READING RULE:
+         * Always report the ACTUAL LIVE SELLING / DISCOUNTED PRICE, NEVER the strikethrough M.R.P. or Original Price (e.g. if a card shows "Rs. 1099 Rs. 4990", the live selling price is ₹1,099).
+         * Check the "STORE PRICE/STOCK QUOTES COLLECTED SO FAR" ledger provided above if available.
+       - If this is a MULTI-STORE PRICE COMPARISON task (e.g. comparing Store A and Store B):
+         * Note the extracted selling price and stock status for the current store.
+         * If the second store has NOT been visited yet: OUTPUT A "NAVIGATE" ACTION to the second store URL (e.g. "https://www.myntra.com" or "https://www.flipkart.com") to check the second store!
+         * Only output COMPLETE after inspecting both requested stores or when all store data is collected, providing a side-by-side comparison summary:
+           "[Store A]: ₹[Price] ([Stock status]). [Store B]: ₹[Price] ([Stock status]). Recommendation: Choose [Cheaper Store] as it saves ₹[Difference]."
+       - If this is a BUY / ADD TO CART / PRICE DROP task:
+         * Compare live price against the user's target price threshold (e.g. target ₹49,999):
+           * If live price <= target price:
+             -> If previous actions have NOT clicked "Add to Cart" or "Buy Now":
+                YOU MUST OUTPUT A "CLICK" ACTION ON THE "Add to Cart" or "Buy Now" BUTTON (targetId matching "Add to Cart" or "Buy Now").
+                DO NOT OUTPUT COMPLETE YET!
+             -> If previous actions ALREADY clicked "Add to Cart" OR the page is an upsell/cart/sidebar/confirmation overlay:
+                YOU MUST IMMEDIATELY OUTPUT COMPLETE with summary: "Price condition met: Found product at ₹[Price] (below target ₹[Target]). Item added to cart."
+                NEVER CLICK additional "Add to Cart" buttons for recommended, sponsored, related, or upsell products!
+           * If live price > target price: Condition is NOT met.
+             -> Output COMPLETE with summary: "Current price is ₹[Price], which is above the target price threshold of ₹[Target]. Item not added to cart."
     4. If on the Cart / Confirmation / Checkout page (e.g. /cart, /gp/cart, or title containing "Shopping Cart"):
        - Output COMPLETE immediately: "Item has been successfully added to the cart." Do NOT click further buttons.
 
@@ -97,7 +108,7 @@ CORE CAPABILITIES & EXECUTION RULES:
 - When the goal or form filling has been achieved, output COMPLETE with a clear summary.
 
 OUTPUT FORMAT:
-Respond with a SINGLE VALID JSON object in this exact schema:
+Respond IMMEDIATELY with ONLY a SINGLE VALID JSON object. Do not provide conversational markdown preamble, backticks, or lengthy reasoning. Keep "description" concise (< 15 words).
 {
   "action": {
     "type": "CLICK" | "TYPE" | "SELECT" | "SCROLL" | "NAVIGATE" | "WAIT" | "REQUEST_APPROVAL" | "REQUEST_USER_INPUT" | "COMPLETE" | "FAIL",
@@ -113,7 +124,7 @@ Respond with a SINGLE VALID JSON object in this exact schema:
     "fieldKey": "field_name", // for REQUEST_USER_INPUT
     "error": "Error description", // for FAIL
     "recoverable": false, // for FAIL
-    "description": "Clear step-by-step reasoning" // required
+    "description": "Short action reason" // required
   }
 }
 `;
@@ -163,10 +174,11 @@ export class PlannerService {
   async planNextStep(
     goal: string,
     observation: PageObservation,
-    stepHistory: string[]
+    stepHistory: string[],
+    storeQuotes?: Record<string, { price?: number; formattedPrice?: string; title?: string; inStock?: boolean; url?: string }>
   ): Promise<AgentAction> {
-    // Keep last 5 steps to prevent prompt explosion on long tasks
-    const recentHistory = stepHistory.slice(-5);
+    // Keep last 6 steps to prevent prompt explosion while retaining immediate context
+    const recentHistory = stepHistory.slice(-6);
     const scrollCount = recentHistory.filter((s) => s.toUpperCase().includes("SCROLL")).length;
     const loopWarning = scrollCount >= 2
       ? "\n⚠️ NOTICE: You have already scrolled down multiple times. DO NOT SCROLL AGAIN. Inspect the interactive elements below and CLICK the matching product title, link, or button immediately."
@@ -177,10 +189,20 @@ export class PlannerService {
         ? `\nPREVIOUS ACTIONS TAKEN:\n${recentHistory.map((s, i) => `${i + 1}. ${s}`).join("\n")}${loopWarning}`
         : "";
 
-    // Candidate models in preference order from available Groq list
+    // Render persistent store quotes ledger so multi-store price comparisons are never forgotten
+    let storeQuotesPrompt = "";
+    if (storeQuotes && Object.keys(storeQuotes).length > 0) {
+      const quotesList = Object.entries(storeQuotes)
+        .map(([store, q]) => `- ${store.toUpperCase()}: ${q.formattedPrice || (q.price ? `₹${q.price}` : "Observed")} (${q.inStock ? "In Stock" : "Out of Stock"})${q.title ? ` - "${q.title}"` : ""}`)
+        .join("\n");
+      storeQuotesPrompt = `\n\nSTORE PRICE/STOCK QUOTES COLLECTED SO FAR (DO NOT FORGET):\n${quotesList}\n`;
+    }
+
+    // Fast instruction & reasoning models in optimal latency order
     const candidateModels = [
-      "openai/gpt-oss-20b",
+      this.model,
       "qwen/qwen3.8-27b",
+      "openai/gpt-oss-20b",
       "openai/gpt-oss-120b",
       "allam-2-7b"
     ].filter((m, idx, arr) => m && arr.indexOf(m) === idx);
@@ -193,7 +215,7 @@ export class PlannerService {
       return `
 USER GOAL: "${goal}"
 CURRENT URL: ${observation.url}
-PAGE TITLE: "${observation.title}"
+PAGE TITLE: "${observation.title}"${storeQuotesPrompt}
 ${historyPrompt}
 
 <untrusted_webpage_content>
@@ -217,7 +239,7 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
               { role: "user", content: userMessage }
             ],
             temperature: 0.1,
-            max_tokens: 1500
+            max_tokens: 400
           });
           messageContent = response.choices[0]?.message?.content || "{}";
         } catch (apiErr: any) {
@@ -236,7 +258,7 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
                 { role: "user", content: compactUserMessage }
               ],
               temperature: 0.1,
-              max_tokens: 1500
+              max_tokens: 350
             });
             messageContent = retryResponse.choices[0]?.message?.content || "{}";
           } else if (!isTpdError && (apiErr?.status === 400 || errStr.includes("json"))) {
@@ -247,7 +269,7 @@ Analyze the user goal and the interactive elements, then output the next JSON ac
                 { role: "user", content: `${userMessage}\n\nIMPORTANT: Return ONLY a valid JSON object matching the requested schema.` }
               ],
               temperature: 0.1,
-              max_tokens: 1500
+              max_tokens: 400
             });
             messageContent = fallbackResponse.choices[0]?.message?.content || "{}";
           } else {

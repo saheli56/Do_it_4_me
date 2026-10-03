@@ -60,26 +60,20 @@ export function findTargetElement(locator: ElementLocator, doc: Document = docum
 export function highlightElement(
   element: Element,
   label = "DIFM Action",
-  durationMs = 450
+  durationMs = 400
 ): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof element.getBoundingClientRect !== "function") {
-      resolve();
-      return;
-    }
-
+  // Fire-and-forget: perform DOM styling and visual pulse without blocking execution
+  if (typeof element.getBoundingClientRect === "function") {
     try {
-      // Smoothly bring element into viewport center if needed
       if (typeof element.scrollIntoView === "function") {
         try {
-          element.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+          element.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "nearest", inline: "nearest" });
         } catch {}
       }
 
       const doc = element.ownerDocument || document;
       const rect = element.getBoundingClientRect();
 
-      // Highlight Container Box
       const overlay = doc.createElement("div");
       overlay.setAttribute("data-difm-highlight", "true");
       overlay.style.position = "fixed";
@@ -93,7 +87,7 @@ export function highlightElement(
       overlay.style.borderRadius = "6px";
       overlay.style.pointerEvents = "none";
       overlay.style.zIndex = "2147483647";
-      overlay.style.transition = "all 0.2s ease-out";
+      overlay.style.transition = "opacity 0.2s ease-out";
 
       // Floating Live Action Pill Badge
       const badge = doc.createElement("div");
@@ -119,19 +113,17 @@ export function highlightElement(
         overlay.style.opacity = "0";
         setTimeout(() => {
           overlay.remove();
-          resolve();
         }, 150);
       }, durationMs);
-    } catch {
-      resolve();
-    }
-  });
+    } catch {}
+  }
+  return Promise.resolve();
 }
 
-export function waitForSettlement(doc: Document = document, timeoutMs = 250): Promise<void> {
+export function waitForSettlement(doc: Document = document, timeoutMs = 100): Promise<void> {
   return new Promise((resolve) => {
     if (typeof MutationObserver === "undefined" || !doc?.body) {
-      setTimeout(resolve, 30);
+      setTimeout(resolve, 10);
       return;
     }
 
@@ -143,7 +135,7 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 250): Pr
         timeoutId = setTimeout(() => {
           observer.disconnect();
           resolve();
-        }, 60);
+        }, 40);
       });
 
       observer.observe(doc.body, {
@@ -157,7 +149,7 @@ export function waitForSettlement(doc: Document = document, timeoutMs = 250): Pr
         resolve();
       }, timeoutMs);
     } catch {
-      setTimeout(resolve, 30);
+      setTimeout(resolve, 10);
     }
   });
 }
@@ -257,27 +249,33 @@ export async function executeAgentAction(
           } catch {}
         }
 
-        // Force links with target="_blank" to open in the current tab and trigger navigation
-        const anchor = (el.tagName === "A" ? el : el.closest("a")) as HTMLAnchorElement | null;
-        if (anchor && anchor.href && (anchor.href.startsWith("http://") || anchor.href.startsWith("https://"))) {
-          anchor.target = "_self";
-          anchor.removeAttribute("target");
-          const destHref = anchor.href;
+        // Force links with target="_blank" or nested anchor clicks to navigate in the current tab
+        const anchor = (el.tagName === "A" ? el : el.closest("a") || el.querySelector("a")) as HTMLAnchorElement | null;
+        if (anchor && anchor.href) {
           try {
-            anchor.click();
+            anchor.target = "_self";
+            anchor.removeAttribute("target");
           } catch {}
 
-          if (doc.defaultView && doc.defaultView.location.href !== destHref) {
+          const destHref = anchor.href;
+          if (destHref && (destHref.startsWith("http://") || destHref.startsWith("https://"))) {
             try {
-              doc.defaultView.location.href = destHref;
+              anchor.click();
             } catch {}
+
+            simulateRealClick(el);
+
+            if (doc.defaultView && doc.defaultView.location.href !== destHref) {
+              try {
+                doc.defaultView.location.href = destHref;
+              } catch {}
+            }
+            return { success: true, navigated: true };
           }
-          return { success: true, navigated: true };
-        } else {
-          simulateRealClick(el);
         }
 
-        await waitForSettlement(doc, 400);
+        simulateRealClick(el);
+        await waitForSettlement(doc, 120);
         return { success: true };
       }
 
@@ -331,6 +329,29 @@ export async function executeAgentAction(
           try {
             inputEl.dispatchEvent(new Evt("input", { bubbles: true, composed: true }));
             inputEl.dispatchEvent(new Evt("change", { bubbles: true, composed: true }));
+            
+            // If the element is a search box or input inside a search form (e.g. Myntra, Flipkart, Amazon, Google)
+            const isSearchInput =
+              inputEl.type === "search" ||
+              inputEl.getAttribute("role") === "searchbox" ||
+              /search|query|desktop-searchBar/i.test(inputEl.name || inputEl.id || inputEl.className || inputEl.placeholder || "");
+
+            if (isSearchInput) {
+              const KeyboardEvt = (win as any)?.KeyboardEvent || (typeof KeyboardEvent !== "undefined" ? KeyboardEvent : Evt);
+              try {
+                inputEl.dispatchEvent(new KeyboardEvt("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+                inputEl.dispatchEvent(new KeyboardEvt("keypress", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+                inputEl.dispatchEvent(new KeyboardEvt("keyup", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+              } catch {}
+
+              // If inside a form or search container, try submitting or finding search button
+              if (inputEl.form && typeof inputEl.form.requestSubmit === "function") {
+                try {
+                  inputEl.form.requestSubmit();
+                } catch {}
+              }
+            }
+
             inputEl.dispatchEvent(new Evt("blur", { bubbles: true, composed: true }));
           } catch {
             // Ignored

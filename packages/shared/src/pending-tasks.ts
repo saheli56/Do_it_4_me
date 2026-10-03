@@ -238,7 +238,7 @@ export function calculateNextRunTime(schedule: TaskSchedule, fromTime = Date.now
     case "MONTHLY": {
       const targetDom = schedule.dayOfMonth ?? 1; // Default 1st
       targetDate.setDate(targetDom);
-      if (targetDate.getTime() <= fromDate.getTime()) {
+      while (targetDate.getTime() <= fromDate.getTime()) {
         targetDate.setMonth(targetDate.getMonth() + 1);
         targetDate.setDate(targetDom);
       }

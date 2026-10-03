@@ -2,7 +2,25 @@ import { defineBackground } from "wxt/sandbox";
 import type { PendingTaskItem, ExecutionStepDetail } from "@difm/shared";
 
 const CHECK_INTERVAL_MINUTES = 1;
-const NOTIFIED_CACHE = new Set<string>();
+
+async function isAlreadyNotified(cacheKey: string): Promise<boolean> {
+  try {
+    const result = await chrome.storage.local.get("notified_cache");
+    const cache = result.notified_cache || {};
+    return Boolean(cache[cacheKey]);
+  } catch {
+    return false;
+  }
+}
+
+async function markAsNotified(cacheKey: string): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get("notified_cache");
+    const cache = result.notified_cache || {};
+    cache[cacheKey] = Date.now();
+    await chrome.storage.local.set({ notified_cache: cache });
+  } catch {}
+}
 
 interface NotificationMetadata {
   taskId: string;
@@ -312,7 +330,7 @@ async function checkDueTasksAndNotify() {
       for (const task of data.remindersDue) {
         if (task.status === "COMPLETED" || task.status === "CANCELLED") continue;
         const cacheKey = `reminder-${task.id}-${task.dueDate}`;
-        if (NOTIFIED_CACHE.has(cacheKey)) continue;
+        if (await isAlreadyNotified(cacheKey)) continue;
 
         const dueMsg = task.dueDate ? `Due date: ${new Date(task.dueDate).toLocaleDateString()}` : "Due soon!";
         const amtMsg = task.billerInfo?.amount ? `\nPayable Amount: ${task.billerInfo.amount}` : "";
@@ -340,7 +358,7 @@ async function checkDueTasksAndNotify() {
           ]
         });
 
-        NOTIFIED_CACHE.add(cacheKey);
+        await markAsNotified(cacheKey);
       }
     }
 
@@ -348,7 +366,7 @@ async function checkDueTasksAndNotify() {
     if (Array.isArray(data.scheduledReady)) {
       for (const task of data.scheduledReady) {
         const cacheKey = `sched-${task.id}-${task.schedule?.nextRunAt}`;
-        if (NOTIFIED_CACHE.has(cacheKey)) continue;
+        if (await isAlreadyNotified(cacheKey)) continue;
 
         if (task.category === "COMMERCE_WATCH" || task.priceCondition || task.billerInfo?.priceCondition) {
           inspectedTaskIds.add(task.id);
@@ -397,7 +415,7 @@ async function checkDueTasksAndNotify() {
           });
         }
 
-        NOTIFIED_CACHE.add(cacheKey);
+        await markAsNotified(cacheKey);
       }
     }
 
